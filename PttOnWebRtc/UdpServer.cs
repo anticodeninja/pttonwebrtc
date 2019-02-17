@@ -56,6 +56,7 @@
         private void ReceiveFrom()
         {
             _receiveArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+            // TODO Handle blocked mode
             _socket.ReceiveFromAsync(_receiveArgs);
         }
 

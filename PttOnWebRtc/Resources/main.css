@@ -5,9 +5,38 @@
 
 html, body {
     height: 100%;
+    width: 100%;
+    display: flex;
 }
 
-#debug-log {
-    width: 600px;
-    height: 100%;
+body > * {
+  flex-grow: 1;
+  flex-basis: 0;
+}
+
+#control {
+    display: flex;
+    flex-direction: column;
+}
+
+#clients {
+    flex-grow: 10;
+    display: flex;
+    flex-direction: column;
+}
+
+#clients > * {
+    display: flex;
+    align-items: center;
+    font-size: 25px;
+    margin: 5px;
+}
+
+#clients > * > * {
+  flex-grow: 1;
+  flex-basis: 0;
+}
+
+#ptt {
+    flex-grow: 1;
 }

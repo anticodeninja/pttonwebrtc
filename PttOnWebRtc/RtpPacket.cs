@@ -5,8 +5,6 @@
 
 namespace PttOnWebRtc
 {
-    using System;
-
     public class RtpPacket
     {
         public const int BUFFER_SIZE = 512;

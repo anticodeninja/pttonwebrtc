@@ -7,53 +7,155 @@
     'use strict';
 
     let pttState = false,
-        ctrDebugLog,
-        ctrPtt,
+        ctrClients = document.querySelector('#clients'),
+        ctrDebugLog = document.querySelector('#debug-log'),
+        ctrPtt = document.querySelector('#ptt'),
         socket,
+        microphone,
+        clients = [],
+        clientId = 0,
+        serverIp = '127.0.0.1',
+        serverPort = 18500,
+        rtpSender,
         rtc,
         rtcLocalStream;
 
-    function init() {
-        ctrDebugLog = document.getElementById('debug-log');
-        ctrPtt = document.getElementById('ptt');
+    function log(value) {
+        ctrDebugLog.value += value + '\n';
+        ctrDebugLog.scrollTop = ctrDebugLog.scrollHeight
+    }
 
-        ctrDebugLog.value += 'Initialized\n';
+    function renderClients() {
+        let active = new Set();
+        for (let i = 0, len = clients.length; i < len; ++i) {
+            let c = clients[i];
+            let blockId = 'c-' + c.id;
+            active.add(blockId);
+            let ctrClient = ctrClients.querySelector('.' + blockId);
+            if (!ctrClient) {
+                ctrClient = document.createElement('div');
+                ctrClient.className = blockId;
+                ctrClient.innerHTML = '<span class="name"></span>' +
+                                      '<span class="state"></span>' +
+                                      '<audio autoplay controls></audio>';
+                ctrClients.appendChild(ctrClient);
+            }
+            ctrClient.querySelector('.name').innerText = c.name;
+            ctrClient.querySelector('.state').innerText = c.state + (c.id == clientId ? ' (me)' : '');
+        }
 
-        ctrPtt.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            pttState = !pttState;
-            ctrDebugLog.value += pttState ? 'PTT ON\n' : 'PTT OFF\n';
+        for (let i = 0; i < ctrClients.children.length;) {
+            if (!active.has(ctrClients.children[i].className)) {
+                ctrClients.children[i].remove();
+            } else {
+                i += 1;
+            }
+        }
+    }
 
+    function gotRemoteStream(e) {
+        let ctrAudio = ctrClients.querySelector('.c-' + e.track.id + ' audio');
+        if (ctrAudio.srcObject !== e.streams[0]) {
+            ctrAudio.srcObject = e.streams[0];
+            log('Received remote stream');
+        }
+    }
+
+    function updateRtc() {
+        return rtc.createOffer({
+            offerToReceiveAudio: 1,
+            offerToReceiveVideo: 0,
+            voiceActivityDetection: false
+        })
+        .then(offer => {
+            let sdp = offer.sdp.replace(/ssrc:\d+/g, 'ssrc:' + clientId);
+            log('Local SDP:\n' + offer.sdp);
             socket.send(JSON.stringify({
-                command: 'ptt',
-                state: pttState
+                command: 'offer',
+                sdp: sdp
             }));
-        });
 
-        wsInit();
+            return rtc.setLocalDescription({
+                type: 'offer',
+                sdp: sdp,
+            });
+        })
+        .then(offer => {
+            let temp = [
+                'v=0',
+                'o=- 8053710768511283638 2 IN IP4 ' + serverIp,
+                's=-',
+                't=0 0',
+                'a=group:BUNDLE audio',
+                'a=msid-semantic: WMS',
+                'm=audio ' + serverPort + ' UDP/TLS/RTP/SAVPF 0 8',
+                'c=IN IP4 ' + serverIp,
+                'a=candidate:1270274445 1 udp 2122260223 ' + serverIp + ' ' + serverPort + ' typ host generation 0',
+                'a=ice-lite',
+                'a=ice-ufrag:4hYU',
+                'a=ice-pwd:AzxUGoufPfAK/IhG6St7bZzU',
+                'a=ice-options:trickle',
+                'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
+                'a=setup:active',
+                'a=rtcp-mux',
+                'a=mid:audio',
+                'a=sendrecv',
+                'a=rtpmap:0 PCMU/8000',
+                'a=rtpmap:8 PCMA/8000'
+            ];
+
+            for (let i = 0, len = clients.length; i < len; ++i) {
+                let c = clients[i];
+                if (c.id == clientId) { continue; }
+                temp.push('a=ssrc:' + c.id + ' cname:' + c.id);
+                temp.push('a=ssrc:' + c.id + ' msid:' + c.id + ' ' + c.id);
+                temp.push('a=ssrc:' + c.id + ' mslabel:' + c.id);
+                temp.push('a=ssrc:' + c.id + ' label:' + c.id);
+            }
+
+            temp.push('');
+            let sdp = temp.join('\n');
+            log('Remote SDP:\n' + sdp);
+
+            return rtc.setRemoteDescription({
+                type: 'answer',
+                sdp: sdp,
+            });
+        });
     }
 
     function wsInit() {
         socket = new WebSocket('wss://' + document.location.host + '/api');
-        ctrPtt.disabled = true;
 
         socket.onopen = function(ev) {
-            ctrDebugLog.value += 'connection opened\n';
-            rtcInit();
-            ctrPtt.disabled = false;
+            log('connection opened');
         };
 
         socket.onclose = function(ev) {
-            ctrDebugLog.value += 'connection closed\n';
+            log('connection closed');
+            rtc.close();
+            ctrPtt.disabled = true;
             setTimeout(wsInit, 1000);
         };
 
         socket.onerror = function(ev) {
-            ctrDebugLog.value += 'connection error\n';
+            log('connection error');
         };
 
         socket.onmessage = function(ev) {
-            ctrDebugLog.value += 'received message ' + ev.data + '\n';
+            log('received message ' + ev.data);
+            let data = JSON.parse(ev.data);
+            if (data.command == 'connected') {
+                ctrPtt.disabled = false;
+                clientId = data.client_id;
+                serverIp = data.server_ip;
+                serverPort = data.server_port;
+                rtcInit();
+            } else if (data.command == 'clients') {
+                clients = data['clients'];
+                renderClients();
+                updateRtc();
+            }
         };
     }
 
@@ -63,8 +165,9 @@
                 urls: "stun:" + document.location.host
             }]
         });
-        rtc.oniceconnectionstatechange = e => ctrDebugLog.value += 'ICE state: ' + rtc.iceConnectionState + '\n';
-        rtc.onsignalingstatechange = e => ctrDebugLog.value += 'Signalling state: ' + rtc.signalingState + '\n';
+        rtc.ontrack = gotRemoteStream;
+        rtc.oniceconnectionstatechange = e => log('ICE state: ' + rtc.iceConnectionState);
+        rtc.onsignalingstatechange = e => log('Signalling state: ' + rtc.signalingState);
 
         navigator.mediaDevices.getUserMedia({
             audio: true,
@@ -73,82 +176,42 @@
         .then(stream => {
             rtcLocalStream = stream;
 
-            ctrDebugLog.value += 'Received local stream\n';
+            log('Received local stream');
 
             var audioTracks = rtcLocalStream.getAudioTracks();
             if (audioTracks.length > 0) {
-                ctrDebugLog.value += 'Using Audio device: ' + audioTracks[0].label + '\n';
+                log('Using Audio device: ' + audioTracks[0].label);
             }
 
-            rtcLocalStream.getTracks().forEach(track => {
-                rtc.addTrack(
-                    track,
-                    rtcLocalStream
-                );
-            });
+            microphone = rtcLocalStream.getTracks()[0];
 
-            return rtc.createOffer({
-                offerToReceiveAudio: 1,
-                offerToReceiveVideo: 0,
-                voiceActivityDetection: false
-            });
+            return updateRtc();
         })
-        .then(offer => {
-            ctrDebugLog.value += 'Created offer:\n' + offer.sdp + '\n';
-            socket.send(JSON.stringify({
-                command: 'offer',
-                offer: offer
-            }));
-            return rtc.setLocalDescription(offer);
-        })
-        .then(offer => {
-            let remoteSdp =
-                'v=0\n' +
-                'o=- 8053710768511283638 2 IN IP4 192.168.1.240\n' +
-                's=-\n' +
-                't=0 0\n' +
-                'a=group:BUNDLE audio\n' +
-                'a=msid-semantic: WMS\n' +
-                'm=audio 18500 UDP/TLS/RTP/SAVPF 0 8\n' +
-                'c=IN IP4 192.168.1.240\n' +
-                'a=candidate:1270274445 1 udp 2122260223 192.168.1.240 18500 typ host generation 0\n' +
-                'a=ice-lite\n' +
-                'a=ice-ufrag:4hYU\n' +
-                'a=ice-pwd:AzxUGoufPfAK/IhG6St7bZzU\n' +
-                'a=ice-options:trickle\n' +
-                'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16\n' +
-                'a=setup:active\n' +
-                'a=rtcp-mux\n' +
-                'a=mid:audio\n' +
-                'a=recvonly\n' +
-                'a=rtpmap:0 PCMU/8000\n' +
-                'a=rtpmap:8 PCMA/8000\n';
-            ctrDebugLog.value += 'Try to set remote SDP:\n' + remoteSdp + '\n';
-            return rtc.setRemoteDescription({
-                type: 'answer',
-                sdp: remoteSdp
-            });
-        })
-        //.then(() => {
-        //    ctrDebugLog.value += 'Setted remote description\n';
-
-        //    return rtc.addIceCandidate({
-        //        candidate: "candidate:1270274445 1 udp 2122260223 192.168.1.4 18500 typ host generation 0 ufrag 4hYU network-id 1",
-        //        sdpMLineIndex: 0,
-        //        sdpMid: "audio"
-        //    });
-        //})
-        //.then(() => {
-        //    ctrDebugLog.value += 'Setted ICE candidate\n';
-        //    return rtc.addIceCandidate(null);
-        //})
         .then(() => {
-            ctrDebugLog.value += 'Finalization complete\n';
+            log('Finalization complete');
         })
         .catch(err => {
-            ctrDebugLog.value += 'catched error on rtc init: ' + err + '\n';
+            log('catched error on rtc init: ' + err);
         });
     }
 
-    (window || global).init = init;
+    ctrPtt.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        pttState = !pttState;
+
+        if (pttState) {
+            rtpSender = rtc.addTrack(microphone, rtcLocalStream);
+        } else {
+            rtc.removeTrack(rtpSender);
+        }
+        // updateRtc(); // TODO fix immediate press
+        log(pttState ? 'PTT ON' : 'PTT OFF');
+
+        socket.send(JSON.stringify({
+            command: 'ptt',
+            state: pttState
+        }));
+    });
+
+    wsInit();
 })();

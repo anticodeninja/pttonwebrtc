@@ -3,7 +3,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright 2019 Artem Yamshanov, me [at] anticode.ninja
 
-﻿namespace PttOnWebRtc
+namespace PttOnWebRtc
 {
     using System.Net;
     using System.Security.Cryptography.X509Certificates;
@@ -23,13 +23,15 @@
 
     public class Server : IDisposable
     {
-        private string STATIC_PATH = "PttOnWebRtc.Resources.";
+        #region Constants
 
-        private string DEFAULT_FILE = "index.html";
+        private const string STATIC_PATH = "PttOnWebRtc.Resources.";
+
+        private const string DEFAULT_FILE = "index.html";
+
+        #endregion Constants
 
         private static Dictionary<string, FileCacheInfo> _fileCache;
-
-        private readonly List<Client> _clients;
 
         private List<string> _namesPool;
 
@@ -42,11 +44,12 @@
         private readonly IntPtr _bioMeth;
         private readonly IntPtr _sslCtx;
         private FileStream _debugFile;
+        private uint _ssrcCounter;
+
+        public List<Client> Clients { get; }
 
         public Server()
         {
-            _fileCache = new Dictionary<string, FileCacheInfo>();
-
             _bioMeth = OpenSsl.BIO_meth_new(1, "external");
             if (_bioMeth == IntPtr.Zero)
                 throw new Exception($"Cannot initialize bioMeth: {OpenSsl.GetLastError()}");
@@ -99,8 +102,10 @@
             if (OpenSsl.SSL_CTX_set_tlsext_use_srtp(_sslCtx, "SRTP_AES128_CM_SHA1_80") != 0)
                 throw new Exception($"Cannot add SRTP extension: {OpenSsl.GetLastError()}");
 
-            _clients = new List<Client>();
+            Clients = new List<Client>();
             _namesPool = new List<string> { "Alice", "Bob", "Charlotte", "David", "Emily", "Fargo" };
+            _fileCache = new Dictionary<string, FileCacheInfo>();
+            _ssrcCounter = 0x10000001;
 
             _httpServer = new HttpServer(443, true);
             _httpServer.SslConfiguration = new ServerSslConfiguration(
@@ -114,7 +119,7 @@
             _rtpServer = new UdpServer(18500);
             _rtpServer.OnReceive += HandleRtpPacket;
 
-            _debugFile = File.OpenWrite("debug.g711");
+            _debugFile = File.Create("debug.g711");
 
             PrepareStatic();
         }
@@ -133,10 +138,10 @@
             _httpServer.Stop();
         }
 
-        public string AddClient(Client client)
+        public void AddClient(Client client, out string name, out uint clientId)
         {
             if (_namesPool.Count == 0)
-                return null;
+                throw new Exception("All slots busy");
 
             var ssl = OpenSsl.SSL_new(_sslCtx);
             if (ssl == IntPtr.Zero)
@@ -152,24 +157,23 @@
             client.SetBio(bio);
             client.SetSsl(ssl);
 
-            var name = _namesPool[0];
+            name = _namesPool[0];
             _namesPool.RemoveAt(0);
-            _clients.Add(client);
-            return name;
+            clientId = _ssrcCounter++;
+
+            Clients.Add(client);
         }
 
         public void RemoveClient(Client client)
         {
             _namesPool.Add(client.Name);
-            _clients.Remove(client);
+            Clients.Remove(client);
         }
 
-        public void HandlePtt(Client source, bool value)
+        public void BroadcastState()
         {
-            foreach (var client in _clients)
-            {
-                client.HandlePtt(source, value);
-            }
+            foreach (var client in Clients)
+                client.BroadcastState();
         }
 
         public void HandleOffer(Client source, string sdp)
@@ -231,6 +235,18 @@
                     client.SrtpContext.TryParseSrtpPacket(data, out var rtp) == RtpPacket.ResultCodes.Ok)
                 {
                     _debugFile.Write(rtp.Payload, 0, rtp.Payload.Length);
+
+                    foreach (var another in Clients)
+                    {
+                        IPEndPoint remoteEp;
+                        byte[] packet;
+
+                        if (client == another) continue;
+                        if ((remoteEp = another.RemoteRtp) == null) continue;
+                        if ((packet = another.SrtpContext.PackSrtpPacket(rtp)) == null) continue;
+
+                        _rtpServer.Send(remoteEp, packet);
+                    }
                 }
                 else if (StunPacket.TryParse(data, out var stun) == StunPacket.ResultCodes.Ok)
                 {
@@ -298,7 +314,7 @@
 
         private Client FindClient(IPEndPoint from)
         {
-            return _clients.Find(x => from.Equals(x.RemoteRtp));
+            return Clients.Find(x => from.Equals(x.RemoteRtp));
         }
 
         private Client FindClientAndCheckIntegrity(StunPacket packet)
@@ -306,7 +322,7 @@
             if (packet.MessageIntegrity == null || packet.Username == null)
                 return null;
 
-            var client = _clients.Find(a => a.Ufrag == packet.Username.Split(':')[1]);
+            var client = Clients.Find(a => a.Ufrag == packet.Username.Split(':')[1]);
             if (client == null)
                 return null;
 

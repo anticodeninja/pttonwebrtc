@@ -3,10 +3,11 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright 2019 Artem Yamshanov, me [at] anticode.ninja
 
-﻿namespace PttOnWebRtc
+namespace PttOnWebRtc
 {
     using System;
     using System.Collections.Concurrent;
+    using System.Linq;
     using System.Net;
     using System.Runtime.InteropServices;
     using System.Text;
@@ -26,11 +27,15 @@
 
         public SrtpContext SrtpContext { get; }
 
+        public uint ClientId { get; set; }
+
         public string Name { get; private set; }
 
         public string Ufrag { get; private set; }
 
         public byte[] Pwd { get; private set; }
+
+        public bool PttState { get; private set; }
 
         public IPEndPoint RemoteRtp { get; private set; }
 
@@ -55,9 +60,19 @@
             return (Client)GCHandle.FromIntPtr(ptr).Target;
         }
 
-        public void HandlePtt(Client source, bool value)
+        public void BroadcastState()
         {
-            Send($"{{command:\"ptt_event\",state:{value},source:\"{source.Name}\"}}");
+            Send(
+                new JObject {
+                    ["command"] = "clients",
+                    ["clients"] = new JArray(Server.Clients.Select(c => new JObject
+                    {
+                        ["id"] = c.ClientId,
+                        ["name"] = c.Name,
+                        ["state"] = c.PttState ? "active" : "idle",
+                    }).ToArray()),
+                }.ToString()
+            );
         }
 
         public void SetIceParam(string ufrag, string pwd)
@@ -74,14 +89,30 @@
         {
             base.OnOpen();
 
-            Name = Server.AddClient(this);
-            if (Name != null)
+            try
             {
-                Send($"{{command:\"connected\",name:\"{Name}\"}}");
+                Server.AddClient(this, out var name, out var clientId);
+                ClientId = clientId;
+                Name = name;
+                Send(
+                    new JObject{
+                        ["command"] = "connected",
+                        ["name"] = Name,
+                        ["client_id"] = clientId,
+                        ["server_ip"] = Context.ServerEndPoint.Address.ToString(),
+                        ["server_port"] = 18500, // TODO Unmagic
+                    }.ToString()
+                );
+                Server.BroadcastState();
             }
-            else
+            catch (Exception e)
             {
-                Send($"{{command:\"disconnected\",reason:\"all slots are busy\"}}");
+                Send(
+                    new JObject{
+                        ["command"] = "disconnected",
+                        ["reason"] = e.Message,
+                    }.ToString()
+                );
                 Context.WebSocket.Close();
             }
         }
@@ -89,6 +120,7 @@
         protected override void OnClose(CloseEventArgs e)
         {
             Server.RemoveClient(this);
+            Server.BroadcastState();
             base.OnClose(e);
         }
 
@@ -98,10 +130,11 @@
             switch (json["command"].Value<string>())
             {
                 case "ptt":
-                    Server.HandlePtt(this, json["state"].Value<bool>());
+                    PttState = json["state"].Value<bool>();
+                    Server.BroadcastState();
                     break;
                 case "offer":
-                    Server.HandleOffer(this, json["offer"]["sdp"].Value<string>());
+                    Server.HandleOffer(this, json["sdp"].Value<string>());
                     break;
             }
         }
