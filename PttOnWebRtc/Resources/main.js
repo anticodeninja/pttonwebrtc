@@ -25,14 +25,17 @@
         ctrDebugLog.scrollTop = ctrDebugLog.scrollHeight
     }
 
-    function renderClients() {
+    function updateClients() {
         let active = new Set();
+        let updateSdp = false;
+
         for (let i = 0, len = clients.length; i < len; ++i) {
             let c = clients[i];
             let blockId = 'c-' + c.id;
             active.add(blockId);
             let ctrClient = ctrClients.querySelector('.' + blockId);
             if (!ctrClient) {
+                updateSdp = true;
                 ctrClient = document.createElement('div');
                 ctrClient.className = blockId;
                 ctrClient.innerHTML = '<span class="name"></span>' +
@@ -46,10 +49,15 @@
 
         for (let i = 0; i < ctrClients.children.length;) {
             if (!active.has(ctrClients.children[i].className)) {
+                updateSdp = true;
                 ctrClients.children[i].remove();
             } else {
                 i += 1;
             }
+        }
+
+        if (updateSdp) {
+            updateRtc();
         }
     }
 
@@ -153,8 +161,7 @@
                 rtcInit();
             } else if (data.command == 'clients') {
                 clients = data['clients'];
-                renderClients();
-                updateRtc();
+                updateClients();
             }
         };
     }
@@ -204,7 +211,8 @@
         } else {
             rtc.removeTrack(rtpSender);
         }
-        // updateRtc(); // TODO fix immediate press
+
+        updateRtc();
         log(pttState ? 'PTT ON' : 'PTT OFF');
 
         socket.send(JSON.stringify({
