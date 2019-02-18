@@ -89,7 +89,6 @@ namespace PttOnWebRtc
             var index = ((ulong)_rxRoc << 16) + packet.SequenceNumber;
             GenerateSessionKey(_rxKey, _rxSalt, sessionKey, sessionSalt, sessionAuth);
 
-
             var hmacData = new byte[packetSize + 4];
             var hmac = new byte[HMAC_SHA1_SIZE];
             Array.Copy(data, 0, hmacData, 0, packetSize);
@@ -128,7 +127,7 @@ namespace PttOnWebRtc
 
                 if (OpenSsl.SSL_export_keying_material(ssl, keyingMaterialHandle.AddrOfPinnedObject(),
                         2 * SRTP_MASTER_LEN,
-                        Marshal.StringToHGlobalAuto("EXTRACTOR-dtls_srtp"), 19,
+                        Marshal.StringToHGlobalAnsi("EXTRACTOR-dtls_srtp"), 19,
                         IntPtr.Zero, 0, 0) != 1)
                     throw new Exception($"Cannot export keying material: {OpenSsl.GetLastError()}");
 

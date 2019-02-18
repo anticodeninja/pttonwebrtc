@@ -50,14 +50,15 @@
             _sendSyncEvent.WaitOne();
             _sendArgs.SetBuffer(data, 0, data.Length);
             _sendArgs.RemoteEndPoint = to;
-            _socket.SendToAsync(_sendArgs);
+            if (!_socket.SendToAsync(_sendArgs))
+                HandleSend(_socket, _sendArgs);
         }
 
         private void ReceiveFrom()
         {
             _receiveArgs.RemoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-            // TODO Handle blocked mode
-            _socket.ReceiveFromAsync(_receiveArgs);
+            if (!_socket.ReceiveFromAsync(_receiveArgs))
+                HandleReceive(_socket, _receiveArgs);
         }
 
         private void HandleReceive(object sender, SocketAsyncEventArgs e)

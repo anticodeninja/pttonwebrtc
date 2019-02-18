@@ -33,6 +33,14 @@ namespace PttOnWebRtc
 
         private static Dictionary<string, FileCacheInfo> _fileCache;
 
+        private static readonly IntPtr _bioMeth;
+
+        private static readonly OpenSsl.WriteCb _bioWrite;
+
+        private static readonly OpenSsl.ReadCb _bioRead;
+
+        private static readonly OpenSsl.CtrlCb _bioCtrl;
+
         private List<string> _namesPool;
 
         private readonly HttpServer _httpServer;
@@ -41,25 +49,32 @@ namespace PttOnWebRtc
 
         private readonly UdpServer _rtpServer;
 
-        private readonly IntPtr _bioMeth;
         private readonly IntPtr _sslCtx;
         private FileStream _debugFile;
         private uint _ssrcCounter;
 
         public List<Client> Clients { get; }
 
-        public Server()
+        static Server()
         {
             _bioMeth = OpenSsl.BIO_meth_new(1, "external");
+
+            _bioWrite = BioWrite;
+            _bioRead = BioRead;
+            _bioCtrl = BioCtrl;
+
             if (_bioMeth == IntPtr.Zero)
                 throw new Exception($"Cannot initialize bioMeth: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_write(_bioMeth, BioWrite) != 1)
+            if (OpenSsl.BIO_meth_set_write(_bioMeth, _bioWrite) != 1)
                 throw new Exception($"Cannot initialize bioMethWrite: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_read(_bioMeth, BioRead) != 1)
+            if (OpenSsl.BIO_meth_set_read(_bioMeth, _bioRead) != 1)
                 throw new Exception($"Cannot initialize bioMethRead: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_ctrl(_bioMeth, BioCtrl) != 1)
+            if (OpenSsl.BIO_meth_set_ctrl(_bioMeth, _bioCtrl) != 1)
                 throw new Exception($"Cannot initialize bioMethCtrl: {OpenSsl.GetLastError()}");
+        }
 
+        public Server()
+        {
             var exchangeBio = OpenSsl.BIO_new(_bioMeth);
             if (exchangeBio == IntPtr.Zero)
                 throw new Exception($"Cannot allocate exchange BIO: {OpenSsl.GetLastError()}");

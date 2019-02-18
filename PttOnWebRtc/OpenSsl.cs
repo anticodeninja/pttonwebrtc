@@ -10,9 +10,8 @@ namespace PttOnWebRtc
 
     public static class OpenSsl
     {
-        private const string CryptoDllName = "libcrypto.so";
-
-        private const string SslDllName = "libssl.so";
+        private const string CryptoDllName = "libcrypto";
+        private const string SslDllName = "libssl";
 
         public enum BioCtrls
         {
