@@ -46,6 +46,7 @@
   <ItemGroup>
     <Compile Include="BufferPrimitivies.cs" />
     <Compile Include="DtlsPacket.cs" />
+    <Compile Include="DtlsWrapper.cs" />
     <Compile Include="OpenSsl.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

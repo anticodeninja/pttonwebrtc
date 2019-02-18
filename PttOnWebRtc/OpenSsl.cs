@@ -74,12 +74,12 @@ namespace PttOnWebRtc
         public static extern IntPtr BIO_get_data(IntPtr b);
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void BIO_free_all(IntPtr bio);
+        public static extern void BIO_free(IntPtr bio);
 
         // Crypto
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static IntPtr PEM_read_bio_X509(IntPtr bp, IntPtr x, IntPtr cb, IntPtr u);
+        public static extern IntPtr PEM_read_bio_X509(IntPtr bp, IntPtr x, IntPtr cb, IntPtr u);
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr PEM_read_bio_PrivateKey(IntPtr bp, IntPtr x, IntPtr cb, IntPtr u);
@@ -111,39 +111,39 @@ namespace PttOnWebRtc
         // SSL
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static IntPtr DTLS_method();
+        public static extern IntPtr DTLS_method();
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static IntPtr SSL_CTX_new(IntPtr sslMethod);
+        public static extern IntPtr SSL_CTX_new(IntPtr sslMethod);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_CTX_use_certificate(IntPtr ctx, IntPtr cert);
+        public static extern int SSL_CTX_use_certificate(IntPtr ctx, IntPtr cert);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_CTX_use_PrivateKey(IntPtr ctx, IntPtr pkey);
+        public static extern int SSL_CTX_use_PrivateKey(IntPtr ctx, IntPtr pkey);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_CTX_set_tlsext_use_srtp(IntPtr ctx, string profiles);
+        public static extern int SSL_CTX_set_tlsext_use_srtp(IntPtr ctx, string profiles);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static IntPtr SSL_new(IntPtr ctx);
+        public static extern IntPtr SSL_new(IntPtr ctx);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static void SSL_set_bio(IntPtr ssl, IntPtr read_bio, IntPtr write_bio);
+        public static extern void SSL_set_bio(IntPtr ssl, IntPtr read_bio, IntPtr write_bio);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static void SSL_set_connect_state(IntPtr ssl);
+        public static extern void SSL_set_connect_state(IntPtr ssl);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_do_handshake(IntPtr ssl);
+        public static extern int SSL_do_handshake(IntPtr ssl);
 
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_write(IntPtr ssl, IntPtr buf, int num);
-
-        [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
-        public extern static int SSL_export_keying_material(IntPtr ssl,
+        public static extern int SSL_export_keying_material(IntPtr ssl,
             IntPtr buffer, int olen, IntPtr label, int llen,
             IntPtr context, int contextlen, int use_context);
+
+        [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SSL_free(IntPtr bio);
 
         private static string _lastError;
 

@@ -33,14 +33,6 @@ namespace PttOnWebRtc
 
         private static Dictionary<string, FileCacheInfo> _fileCache;
 
-        private static readonly IntPtr _bioMeth;
-
-        private static readonly OpenSsl.WriteCb _bioWrite;
-
-        private static readonly OpenSsl.ReadCb _bioRead;
-
-        private static readonly OpenSsl.CtrlCb _bioCtrl;
-
         private List<string> _namesPool;
 
         private readonly HttpServer _httpServer;
@@ -55,34 +47,8 @@ namespace PttOnWebRtc
 
         public List<Client> Clients { get; }
 
-        static Server()
-        {
-            _bioMeth = OpenSsl.BIO_meth_new(1, "external");
-
-            _bioWrite = BioWrite;
-            _bioRead = BioRead;
-            _bioCtrl = BioCtrl;
-
-            if (_bioMeth == IntPtr.Zero)
-                throw new Exception($"Cannot initialize bioMeth: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_write(_bioMeth, _bioWrite) != 1)
-                throw new Exception($"Cannot initialize bioMethWrite: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_read(_bioMeth, _bioRead) != 1)
-                throw new Exception($"Cannot initialize bioMethRead: {OpenSsl.GetLastError()}");
-            if (OpenSsl.BIO_meth_set_ctrl(_bioMeth, _bioCtrl) != 1)
-                throw new Exception($"Cannot initialize bioMethCtrl: {OpenSsl.GetLastError()}");
-        }
-
         public Server()
         {
-            var exchangeBio = OpenSsl.BIO_new(_bioMeth);
-            if (exchangeBio == IntPtr.Zero)
-                throw new Exception($"Cannot allocate exchange BIO: {OpenSsl.GetLastError()}");
-
-            _sslCtx = OpenSsl.SSL_CTX_new(OpenSsl.DTLS_method());
-            if (_sslCtx == IntPtr.Zero)
-                throw new Exception($"Cannot create SSL_CTX: {OpenSsl.GetLastError()}");
-
             var certBio = OpenSsl.BIO_new(OpenSsl.BIO_s_mem());
             if (certBio == IntPtr.Zero)
                 throw new Exception($"Cannot allocate cert BIO: {OpenSsl.GetLastError()}");
@@ -91,6 +57,10 @@ namespace PttOnWebRtc
             var certData = Resources.ReadFile("PttOnWebRtc.Resources.p2.pem");
             if (OpenSsl.BIO_write(certBio, certData, certData.Length) != certData.Length)
                 throw new Exception($"Cannot initialize cert BIO: {OpenSsl.GetLastError()}");
+
+            _sslCtx = OpenSsl.SSL_CTX_new(OpenSsl.DTLS_method());
+            if (_sslCtx == IntPtr.Zero)
+                throw new Exception($"Cannot create SSL_CTX: {OpenSsl.GetLastError()}");
 
             var cert = OpenSsl.PEM_read_bio_X509(certBio, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (cert == IntPtr.Zero)
@@ -158,23 +128,10 @@ namespace PttOnWebRtc
             if (_namesPool.Count == 0)
                 throw new Exception("All slots busy");
 
-            var ssl = OpenSsl.SSL_new(_sslCtx);
-            if (ssl == IntPtr.Zero)
-                throw new Exception("Cannot initialize ssl");
-
-            var bio = OpenSsl.BIO_new(_bioMeth);
-            if (bio == IntPtr.Zero)
-                throw new Exception("Cannot allocate exchange BIO");
-
-            OpenSsl.BIO_set_data(bio, client.Handle);
-            OpenSsl.SSL_set_bio(ssl, bio, bio);
-
-            client.SetBio(bio);
-            client.SetSsl(ssl);
-
             name = _namesPool[0];
             _namesPool.RemoveAt(0);
             clientId = _ssrcCounter++;
+            client.SetDtlsWrapper(new DtlsWrapper(_sslCtx, client, SendCallback));
 
             Clients.Add(client);
         }
@@ -295,21 +252,7 @@ namespace PttOnWebRtc
 
                     client.SetRtpParam(from);
                     _rtpServer.Send(from, answer.Pack());
-                    if (client.SetConnectState())
-                    {
-                        ThreadPool.QueueUserWorkItem(_ =>
-                        {
-                            while (client.DtlsQueue.TryTake(out var _)) {}
-                            OpenSsl.SSL_set_connect_state(client.Ssl);
-                            if (OpenSsl.SSL_do_handshake(client.Ssl) != 1)
-                            {
-                                Console.WriteLine($"Cannot establish DTLS: {OpenSsl.GetLastError()}");
-                                client.ClearConnectState();
-                            }
-
-                            client.SrtpContext.SetMasterKeys(client.Ssl, true);
-                        });
-                    }
+                    client.Dtls.DoHandshake(() => client.SrtpContext.SetMasterKeys(client.Dtls.Ssl, true));
                 }
                 else if (DtlsPacket.CheckPacket(data, 0) == DtlsPacket.ResultCodes.Ok)
                 {
@@ -318,13 +261,18 @@ namespace PttOnWebRtc
                         Console.Error.WriteLineAsync($"Cannot found client with ip {from}");
                         return;
                     }
-                    client.DtlsQueue.Add(data);
+                    client.Dtls.Add(data);
                 }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
             }
+        }
+
+        private void SendCallback(Client client, byte[] data)
+        {
+            _rtpServer.Send(client.RemoteRtp, data);
         }
 
         private Client FindClient(IPEndPoint from)
@@ -380,54 +328,6 @@ namespace PttOnWebRtc
                 if (filename.EndsWith(DEFAULT_FILE))
                     _fileCache[path.Substring(0, path.Length - DEFAULT_FILE.Length)] = fileCacheInfo;
             }
-        }
-
-        private static int BioWrite(IntPtr bio, IntPtr data, int dlen)
-        {
-            Console.WriteLine($"BioWrite {bio} {data} {dlen}");
-            var client = Client.FromHandle(OpenSsl.BIO_get_data(bio));
-
-            // TODO Add resend attempts
-            var temp = new byte[dlen];
-            Marshal.Copy(data, temp, 0, dlen);
-            client.Server._rtpServer.Send(client.RemoteRtp, temp);
-
-            return dlen;
-        }
-
-        private static int BioRead(IntPtr bio, IntPtr data, int dlen)
-        {
-            Console.WriteLine($"BioRead {bio} {data} {dlen}");
-            var client = Client.FromHandle(OpenSsl.BIO_get_data(bio));
-
-            var packet = client.DtlsQueue.Take();
-            Marshal.Copy(packet, 0, data, packet.Length);
-
-            return packet.Length;
-        }
-
-        private static long BioCtrl(IntPtr bio, int cmd, long larg, IntPtr parg)
-        {
-            // bss_dgram.c was used as reference
-            Console.WriteLine($"BioCtrl {bio} {(OpenSsl.BioCtrls)cmd} {larg} {parg}");
-            switch ((OpenSsl.BioCtrls)cmd)
-            {
-                case OpenSsl.BioCtrls.Push:
-                    return -1;
-                case OpenSsl.BioCtrls.Flush:
-                    return 1;
-                case OpenSsl.BioCtrls.WPending:
-                    return 0;
-                case OpenSsl.BioCtrls.DgramQueryMtu:
-                    return 1450;
-                case OpenSsl.BioCtrls.DgramSetMtu:
-                    return larg;
-                case OpenSsl.BioCtrls.DgramSetNextTimeout:
-                    return 1;
-                case OpenSsl.BioCtrls.DgramGetMtuOverhead:
-                    return 28; // IPv4 + UDP
-            }
-            return 0;
         }
 
         private class FileCacheInfo

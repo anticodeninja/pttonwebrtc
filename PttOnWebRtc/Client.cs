@@ -6,12 +6,9 @@
 namespace PttOnWebRtc
 {
     using System;
-    using System.Collections.Concurrent;
     using System.Linq;
     using System.Net;
-    using System.Runtime.InteropServices;
     using System.Text;
-    using System.Threading;
 
     using Newtonsoft.Json.Linq;
     using WebSocketSharp;
@@ -19,10 +16,6 @@ namespace PttOnWebRtc
 
     public class Client : WebSocketBehavior
     {
-        private readonly GCHandle _handle;
-
-        private int _connectionState;
-
         public Server Server { get; }
 
         public SrtpContext SrtpContext { get; }
@@ -39,25 +32,12 @@ namespace PttOnWebRtc
 
         public IPEndPoint RemoteRtp { get; private set; }
 
-        public IntPtr Ssl { get; private set; }
-
-        public IntPtr Bio { get; private set; }
-
-        public IntPtr Handle => GCHandle.ToIntPtr(_handle);
-
-        public BlockingCollection<byte[]> DtlsQueue { get; }
+        public DtlsWrapper Dtls { get; private set; }
 
         public Client(Server server)
         {
             Server = server;
-            DtlsQueue = new BlockingCollection<byte[]>();
             SrtpContext = new SrtpContext();
-            _handle = GCHandle.Alloc(this);
-        }
-
-        public static Client FromHandle(IntPtr ptr)
-        {
-            return (Client)GCHandle.FromIntPtr(ptr).Target;
         }
 
         public void BroadcastState()
@@ -81,8 +61,7 @@ namespace PttOnWebRtc
             Pwd = Encoding.UTF8.GetBytes(pwd);
         }
 
-        public IntPtr SetBio(IntPtr bio) => Bio = bio;
-        public void SetSsl(IntPtr ssl) => Ssl = ssl;
+        public void SetDtlsWrapper(DtlsWrapper dtls) => Dtls = dtls;
         public void SetRtpParam(IPEndPoint remoteRtp) => RemoteRtp = remoteRtp;
 
         protected override void OnOpen()
@@ -121,6 +100,10 @@ namespace PttOnWebRtc
         {
             Server.RemoveClient(this);
             Server.BroadcastState();
+
+            Dtls?.Dispose();
+            Dtls = null;
+
             base.OnClose(e);
         }
 
@@ -137,16 +120,6 @@ namespace PttOnWebRtc
                     Server.HandleOffer(this, json["sdp"].Value<string>());
                     break;
             }
-        }
-
-        public bool SetConnectState()
-        {
-            return Interlocked.CompareExchange(ref _connectionState, 1, 0) == 0;
-        }
-
-        public void ClearConnectState()
-        {
-            Interlocked.Exchange(ref _connectionState, 0);
         }
     }
 }
