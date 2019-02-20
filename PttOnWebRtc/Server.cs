@@ -213,6 +213,8 @@ namespace PttOnWebRtc
                         IPEndPoint remoteEp;
                         byte[] packet;
 
+                        rtp.Ssrc = client.ClientId;
+
                         if (client == another) continue;
                         if ((remoteEp = another.RemoteRtp) == null) continue;
                         if ((packet = another.SrtpContext.PackSrtpPacket(rtp)) == null) continue;

@@ -12,60 +12,70 @@
         ctrPtt = document.querySelector('#ptt'),
         socket,
         microphone,
-        clients = [],
+        clients = {},
+        transceiverPool = [],
         clientId = 0,
         serverIp = '127.0.0.1',
         serverPort = 18500,
         rtpSender,
-        rtc,
-        rtcLocalStream;
+        rtc;
 
     function log(value) {
         ctrDebugLog.value += value + '\n';
         ctrDebugLog.scrollTop = ctrDebugLog.scrollHeight
     }
 
-    function updateClients() {
+    function updateClients(newClients) {
         let active = new Set();
         let updateSdp = false;
 
-        for (let i = 0, len = clients.length; i < len; ++i) {
-            let c = clients[i];
-            let blockId = 'c-' + c.id;
-            active.add(blockId);
-            let ctrClient = ctrClients.querySelector('.' + blockId);
-            if (!ctrClient) {
-                updateSdp = true;
-                ctrClient = document.createElement('div');
-                ctrClient.className = blockId;
-                ctrClient.innerHTML = '<span class="name"></span>' +
-                                      '<span class="state"></span>' +
-                                      '<audio autoplay controls></audio>';
-                ctrClients.appendChild(ctrClient);
+        for (let i = 0, len = newClients.length; i < len; ++i) {
+            let nc = newClients[i];
+            active.add(nc.id);
+
+            let c = clients[nc.id];
+            if (!c) {
+                let ctrBlock = document.createElement('div');
+                ctrBlock.innerHTML = '<span class="name"></span>' +
+                                     '<span class="state"></span>' +
+                                     '<audio autoplay controls></audio>';
+                ctrClients.appendChild(ctrBlock);
+
+                clients[nc.id] = c = {
+                    id: nc.id,
+                    ctrBlock: ctrBlock,
+                }
             }
-            ctrClient.querySelector('.name').innerText = c.name;
-            ctrClient.querySelector('.state').innerText = c.state + (c.id == clientId ? ' (me)' : '');
+
+            if (rtc.connectionState == 'connected' && c.id != clientId && !c.transceiver) {
+                updateSdp = true;
+                c.transceiver = transceiverPool.length > 0
+                    ? transceiverPool.pop()
+                    : rtc.addTransceiver('audio', {direction: 'recvonly'});
+            }
+
+            c.ctrBlock.querySelector('.name').innerText = nc.name + (nc.id == clientId ? ' (me)' : '');
+            c.ctrBlock.querySelector('.state').innerText = nc.state;
+
+            if (c.transceiver) {
+                c.ctrBlock.querySelector('audio').srcObject = new MediaStream([c.transceiver.receiver.track]);
+            }
         }
 
-        for (let i = 0; i < ctrClients.children.length;) {
-            if (!active.has(ctrClients.children[i].className)) {
-                updateSdp = true;
-                ctrClients.children[i].remove();
-            } else {
-                i += 1;
+        for (let cid in clients) {
+            let c = clients[cid];
+            if (!active.has(c.id)) {
+                if (clients[cid].transceiver) {
+                    updateSdp = true;
+                    transceiverPool.push(c.transceiver);
+                }
+                c.ctrBlock.remove();
+                delete clients[cid];
             }
         }
 
-        if (updateSdp) {
+        if (rtc.connectionState == 'connected' && updateSdp) {
             updateRtc();
-        }
-    }
-
-    function gotRemoteStream(e) {
-        let ctrAudio = ctrClients.querySelector('.c-' + e.track.id + ' audio');
-        if (ctrAudio.srcObject !== e.streams[0]) {
-            ctrAudio.srcObject = e.streams[0];
-            log('Received remote stream');
         }
     }
 
@@ -76,8 +86,9 @@
             voiceActivityDetection: false
         })
         .then(offer => {
-            let sdp = offer.sdp.replace(/ssrc:\d+/g, 'ssrc:' + clientId);
-            log('Local SDP:\n' + offer.sdp);
+            let sdp = offer.sdp;
+
+            log('Local SDP:\n' + sdp);
             socket.send(JSON.stringify({
                 command: 'offer',
                 sdp: sdp
@@ -89,15 +100,18 @@
             });
         })
         .then(offer => {
+            let bundle = rtc.localDescription.sdp.match(/a=group:BUNDLE\s+([^\n]+)/)[1].split(' ');
+
             let temp = [
                 'v=0',
                 'o=- 8053710768511283638 2 IN IP4 ' + serverIp,
                 's=-',
                 't=0 0',
-                'a=group:BUNDLE audio',
+                'a=group:BUNDLE ' + bundle.join(' '),
                 'a=msid-semantic: WMS',
                 'm=audio ' + serverPort + ' UDP/TLS/RTP/SAVPF 0 8',
                 'c=IN IP4 ' + serverIp,
+                'a=rtcp:' + serverPort + ' IN IP4 ' + serverIp,
                 'a=candidate:1270274445 1 udp 2122260223 ' + serverIp + ' ' + serverPort + ' typ host generation 0',
                 'a=ice-lite',
                 'a=ice-ufrag:4hYU',
@@ -106,25 +120,60 @@
                 'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
                 'a=setup:active',
                 'a=rtcp-mux',
-                'a=mid:audio',
-                'a=sendrecv',
+                'a=mid:0',
+                'a=msid:- ' + microphone.id,
+                'a=recvonly',
                 'a=rtpmap:0 PCMU/8000',
                 'a=rtpmap:8 PCMA/8000'
             ];
 
-            for (let i = 0, len = clients.length; i < len; ++i) {
-                let c = clients[i];
-                if (c.id == clientId) { continue; }
-                temp.push('a=ssrc:' + c.id + ' cname:' + c.id);
-                temp.push('a=ssrc:' + c.id + ' msid:' + c.id + ' ' + c.id);
-                temp.push('a=ssrc:' + c.id + ' mslabel:' + c.id);
-                temp.push('a=ssrc:' + c.id + ' label:' + c.id);
+            for (let mid in bundle) {
+                if (mid == 0) { continue; }
+
+                temp = temp.concat([
+                    'm=audio ' + serverPort + ' UDP/TLS/RTP/SAVPF 0 8',
+                    'c=IN IP4 ' + serverIp,
+                    'a=rtcp:' + serverPort + ' IN IP4 ' + serverIp,
+                    'a=ice-ufrag:4hYU',
+                    'a=ice-pwd:AzxUGoufPfAK/IhG6St7bZzU',
+                    'a=ice-options:trickle',
+                    'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
+                    'a=setup:active',
+                    'a=mid:' + mid,
+                    'a=rtcp-mux',
+                ]);
+
+                let c = null;
+                for (let cid in clients) {
+                    if (clients[cid].transceiver && clients[cid].transceiver.mid == mid)
+                    {
+                        c = clients[cid];
+                        break;
+                    }
+                }
+
+                if (c) {
+                    temp = temp.concat([
+                        'a=sendonly',
+                        'a=msid:- ' + c.id,
+                        'a=rtpmap:0 PCMU/8000',
+                        'a=rtpmap:8 PCMA/8000',
+                        'a=ssrc:' + c.id + ' cname:' + c.id,
+                        'a=ssrc:' + c.id + ' msid:- ' + c.id,
+                        'a=ssrc:' + c.id + ' mslabel:-',
+                        'a=ssrc:' + c.id + ' label:' + c.id
+                    ]);
+                } else {
+                    temp = temp.concat([
+                        'a=inactive'
+                    ]);
+                }
             }
 
             temp.push('');
             let sdp = temp.join('\n');
-            log('Remote SDP:\n' + sdp);
 
+            log('Remote SDP:\n' + sdp);
             return rtc.setRemoteDescription({
                 type: 'answer',
                 sdp: sdp,
@@ -160,19 +209,19 @@
                 serverPort = data.server_port;
                 rtcInit();
             } else if (data.command == 'clients') {
-                clients = data['clients'];
-                updateClients();
+                updateClients(data['clients']);
             }
         };
     }
 
     function rtcInit() {
         rtc = new RTCPeerConnection({
+            sdpSemantics: 'unified-plan',
             iceServers: [{
                 urls: "stun:" + document.location.host
             }]
         });
-        rtc.ontrack = gotRemoteStream;
+
         rtc.oniceconnectionstatechange = e => log('ICE state: ' + rtc.iceConnectionState);
         rtc.onsignalingstatechange = e => log('Signalling state: ' + rtc.signalingState);
 
@@ -181,16 +230,23 @@
             video: false
         })
         .then(stream => {
-            rtcLocalStream = stream;
-
             log('Received local stream');
 
-            var audioTracks = rtcLocalStream.getAudioTracks();
+            var audioTracks = stream.getAudioTracks();
             if (audioTracks.length > 0) {
                 log('Using Audio device: ' + audioTracks[0].label);
             }
 
-            microphone = rtcLocalStream.getTracks()[0];
+            microphone = audioTracks[0];
+            rtpSender = rtc.addTrack(microphone, stream);
+            rtpSender.replaceTrack(null);
+
+            for (let cid in clients) {
+                let c = clients[cid];
+                if (c.id != clientId && !c.transceiver) {
+                    c.transceiver = rtc.addTransceiver('audio', {direction: 'recvonly'});
+                }
+            }
 
             return updateRtc();
         })
@@ -206,13 +262,8 @@
         ev.preventDefault();
         pttState = !pttState;
 
-        if (pttState) {
-            rtpSender = rtc.addTrack(microphone, rtcLocalStream);
-        } else {
-            rtc.removeTrack(rtpSender);
-        }
-
-        updateRtc();
+        console.log(rtc, rtc.signalingState, rtc.connectionState);
+        rtpSender.replaceTrack(pttState ? microphone : null);
         log(pttState ? 'PTT ON' : 'PTT OFF');
 
         socket.send(JSON.stringify({
