@@ -16,13 +16,25 @@ namespace PttOnWebRtc
 
     public class Client : WebSocketBehavior
     {
+        #region Fields
+
+        private uint _clientId;
+
+        private string _name;
+
+        #endregion Fields
+
+        #region Properties
+
         public Server Server { get; }
 
-        public SrtpContext SrtpContext { get; }
+        public uint ClientId => _clientId;
 
-        public uint ClientId { get; set; }
+        public string Name => _name;
 
-        public string Name { get; private set; }
+        public SrtpContext SrtpContext { get; private set; }
+
+        public DtlsWrapper Dtls { get; private set; }
 
         public string Ufrag { get; private set; }
 
@@ -32,13 +44,19 @@ namespace PttOnWebRtc
 
         public IPEndPoint RemoteRtp { get; private set; }
 
-        public DtlsWrapper Dtls { get; private set; }
+        #endregion Properties
+
+        #region Constructors
 
         public Client(Server server)
         {
             Server = server;
             SrtpContext = new SrtpContext();
         }
+
+        #endregion Constructors
+
+        #region Methods
 
         public void BroadcastState()
         {
@@ -70,14 +88,14 @@ namespace PttOnWebRtc
 
             try
             {
-                Server.AddClient(this, out var name, out var clientId);
-                ClientId = clientId;
-                Name = name;
+                Server.AddClient(this, out _name, out _clientId);
                 Send(
                     new JObject{
                         ["command"] = "connected",
                         ["name"] = Name,
-                        ["client_id"] = clientId,
+                        ["client_id"] = ClientId,
+                        ["server_ufrag"] = Server.IceUfrag,
+                        ["server_password"] = Server.IcePassword,
                         ["server_ip"] = Context.ServerEndPoint.Address.ToString(),
                         ["server_port"] = 18500, // TODO Unmagic
                     }.ToString()
@@ -101,6 +119,9 @@ namespace PttOnWebRtc
             Server.RemoveClient(this);
             Server.BroadcastState();
 
+            SrtpContext?.Dispose();
+            SrtpContext = null;
+
             Dtls?.Dispose();
             Dtls = null;
 
@@ -121,5 +142,7 @@ namespace PttOnWebRtc
                     break;
             }
         }
+
+        #endregion Methods
     }
 }

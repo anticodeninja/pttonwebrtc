@@ -29,7 +29,11 @@ body > * {
     display: flex;
     align-items: center;
     font-size: 25px;
-    margin: 5px;
+    padding: 5px;
+}
+
+#clients > .active {
+    background: #f66;
 }
 
 #clients > * > * {

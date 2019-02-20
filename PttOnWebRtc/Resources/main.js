@@ -11,10 +11,13 @@
         ctrDebugLog = document.querySelector('#debug-log'),
         ctrPtt = document.querySelector('#ptt'),
         socket,
+        microphoneStream,
         microphone,
         clients = {},
         transceiverPool = [],
         clientId = 0,
+        serverIceUfrag,
+        serverIcePassword,
         serverIp = '127.0.0.1',
         serverPort = 18500,
         rtpSender,
@@ -47,7 +50,7 @@
                 }
             }
 
-            if (rtc.connectionState == 'connected' && c.id != clientId && !c.transceiver) {
+            if (rtc && rtc.connectionState == 'connected' && c.id != clientId && !c.transceiver) {
                 updateSdp = true;
                 c.transceiver = transceiverPool.length > 0
                     ? transceiverPool.pop()
@@ -56,6 +59,7 @@
 
             c.ctrBlock.querySelector('.name').innerText = nc.name + (nc.id == clientId ? ' (me)' : '');
             c.ctrBlock.querySelector('.state').innerText = nc.state;
+            c.ctrBlock.className = nc.state;
 
             if (c.transceiver) {
                 c.ctrBlock.querySelector('audio').srcObject = new MediaStream([c.transceiver.receiver.track]);
@@ -74,7 +78,7 @@
             }
         }
 
-        if (rtc.connectionState == 'connected' && updateSdp) {
+        if (rtc && rtc.connectionState == 'connected' && updateSdp) {
             updateRtc();
         }
     }
@@ -114,8 +118,8 @@
                 'a=rtcp:' + serverPort + ' IN IP4 ' + serverIp,
                 'a=candidate:1270274445 1 udp 2122260223 ' + serverIp + ' ' + serverPort + ' typ host generation 0',
                 'a=ice-lite',
-                'a=ice-ufrag:4hYU',
-                'a=ice-pwd:AzxUGoufPfAK/IhG6St7bZzU',
+                'a=ice-ufrag:' + serverIceUfrag,
+                'a=ice-pwd:' + serverIcePassword,
                 'a=ice-options:trickle',
                 'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
                 'a=setup:active',
@@ -134,8 +138,8 @@
                     'm=audio ' + serverPort + ' UDP/TLS/RTP/SAVPF 0 8',
                     'c=IN IP4 ' + serverIp,
                     'a=rtcp:' + serverPort + ' IN IP4 ' + serverIp,
-                    'a=ice-ufrag:4hYU',
-                    'a=ice-pwd:AzxUGoufPfAK/IhG6St7bZzU',
+                    'a=ice-ufrag:' + serverIceUfrag,
+                    'a=ice-pwd:' + serverIcePassword,
                     'a=ice-options:trickle',
                     'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
                     'a=setup:active',
@@ -205,6 +209,8 @@
             if (data.command == 'connected') {
                 ctrPtt.disabled = false;
                 clientId = data.client_id;
+                serverIceUfrag = data.server_ufrag;
+                serverIcePassword = data.server_password;
                 serverIp = data.server_ip;
                 serverPort = data.server_port;
                 rtcInit();
@@ -225,38 +231,41 @@
         rtc.oniceconnectionstatechange = e => log('ICE state: ' + rtc.iceConnectionState);
         rtc.onsignalingstatechange = e => log('Signalling state: ' + rtc.signalingState);
 
-        navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: false
-        })
-        .then(stream => {
-            log('Received local stream');
+        rtpSender = rtc.addTrack(microphone, microphoneStream);
+        rtpSender.replaceTrack(null);
 
-            var audioTracks = stream.getAudioTracks();
-            if (audioTracks.length > 0) {
-                log('Using Audio device: ' + audioTracks[0].label);
+        transceiverPool.splice(0, transceiverPool.length);
+        for (let cid in clients) {
+            let c = clients[cid];
+            if (c.id != clientId) {
+                c.transceiver = rtc.addTransceiver('audio', {direction: 'recvonly'});
             }
+        }
 
-            microphone = audioTracks[0];
-            rtpSender = rtc.addTrack(microphone, stream);
-            rtpSender.replaceTrack(null);
-
-            for (let cid in clients) {
-                let c = clients[cid];
-                if (c.id != clientId && !c.transceiver) {
-                    c.transceiver = rtc.addTransceiver('audio', {direction: 'recvonly'});
-                }
-            }
-
-            return updateRtc();
-        })
-        .then(() => {
+        updateRtc().then(() => {
             log('Finalization complete');
         })
         .catch(err => {
             log('catched error on rtc init: ' + err);
         });
     }
+
+    navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+    })
+    .then(stream => {
+        log('Received local stream');
+
+        let audioTracks = stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+            log('Using Audio device: ' + audioTracks[0].label);
+        }
+
+        microphoneStream = stream;
+        microphone = audioTracks[0];
+        wsInit();
+    });
 
     ctrPtt.addEventListener('click', function (ev) {
         ev.preventDefault();
@@ -271,6 +280,4 @@
             state: pttState
         }));
     });
-
-    wsInit();
 })();

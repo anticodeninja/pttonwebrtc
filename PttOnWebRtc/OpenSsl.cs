@@ -10,8 +10,14 @@ namespace PttOnWebRtc
 
     public static class OpenSsl
     {
+        #region Constants
+
         private const string CryptoDllName = "libcrypto";
         private const string SslDllName = "libssl";
+
+        #endregion Constants
+
+        #region Enums
 
         public enum BioCtrls
         {
@@ -25,9 +31,15 @@ namespace PttOnWebRtc
             DgramGetMtuOverhead = 49,
         }
 
-        private const int SRTP_MASTER_KEY_LEN = 16;
-        private const int SRTP_MASTER_SALT_LEN = 14;
-        private const int SRTP_MASTER_LEN = SRTP_MASTER_KEY_LEN + SRTP_MASTER_SALT_LEN;
+        #endregion Enums
+
+        #region Fields
+
+        private static string _lastError;
+
+        #endregion Fields
+
+        #region Methods
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate int ErrCb(IntPtr str, uint len, IntPtr u);
@@ -91,6 +103,9 @@ namespace PttOnWebRtc
         public static extern IntPtr EVP_CIPHER_CTX_new();
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void EVP_CIPHER_CTX_free(IntPtr ctx);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr EVP_aes_128_ctr();
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
@@ -145,8 +160,6 @@ namespace PttOnWebRtc
         [DllImport(SslDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SSL_free(IntPtr bio);
 
-        private static string _lastError;
-
         public static string GetLastError()
         {
             ERR_print_errors_cb(WriteError, IntPtr.Zero);
@@ -158,5 +171,7 @@ namespace PttOnWebRtc
             _lastError = Marshal.PtrToStringAuto(str, (int) len);
             return 0;
         }
+
+        #endregion Methods
     }
 }

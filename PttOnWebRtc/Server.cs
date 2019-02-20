@@ -16,8 +16,7 @@ namespace PttOnWebRtc
     using System;
     using System.Collections.Generic;
     using System.IO;
-    using System.Runtime.InteropServices;
-    using System.Threading;
+    using System.Security.Authentication;
 
     using WebSocketSharp.Server;
 
@@ -31,6 +30,8 @@ namespace PttOnWebRtc
 
         #endregion Constants
 
+        #region Fields
+
         private static Dictionary<string, FileCacheInfo> _fileCache;
 
         private List<string> _namesPool;
@@ -41,60 +42,43 @@ namespace PttOnWebRtc
 
         private readonly UdpServer _rtpServer;
 
-        private readonly IntPtr _sslCtx;
         private FileStream _debugFile;
+
         private uint _ssrcCounter;
+
+        #endregion Fields
+
+        #region Properties
 
         public List<Client> Clients { get; }
 
+        public string IceUfrag { get; }
+
+        public string IcePassword { get; }
+
+        public byte[] IcePasswordBytes { get; }
+
+        #endregion Properties
+
+        #region Constructors
+
         public Server()
         {
-            var certBio = OpenSsl.BIO_new(OpenSsl.BIO_s_mem());
-            if (certBio == IntPtr.Zero)
-                throw new Exception($"Cannot allocate cert BIO: {OpenSsl.GetLastError()}");
-
-            // TODO generate temporary certificates
-            var certData = Resources.ReadFile("PttOnWebRtc.Resources.p2.pem");
-            if (OpenSsl.BIO_write(certBio, certData, certData.Length) != certData.Length)
-                throw new Exception($"Cannot initialize cert BIO: {OpenSsl.GetLastError()}");
-
-            _sslCtx = OpenSsl.SSL_CTX_new(OpenSsl.DTLS_method());
-            if (_sslCtx == IntPtr.Zero)
-                throw new Exception($"Cannot create SSL_CTX: {OpenSsl.GetLastError()}");
-
-            var cert = OpenSsl.PEM_read_bio_X509(certBio, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (cert == IntPtr.Zero)
-                throw new Exception($"Cannot initialize cert: {OpenSsl.GetLastError()}");
-
-            if (OpenSsl.SSL_CTX_use_certificate(_sslCtx, cert) != 1)
-                throw new Exception($"Cannot set cert to ctx: {OpenSsl.GetLastError()}");
-
-            var keyBio = OpenSsl.BIO_new(OpenSsl.BIO_s_mem());
-            if (keyBio == IntPtr.Zero)
-                throw new Exception($"Cannot allocate key BIO: {OpenSsl.GetLastError()}");
-
-            var keyData = Resources.ReadFile("PttOnWebRtc.Resources.p2.key");
-            if (OpenSsl.BIO_write(keyBio, keyData, keyData.Length) != keyData.Length)
-                throw new Exception($"Cannot initialize key BIO: {OpenSsl.GetLastError()}");
-
-            var key = OpenSsl.PEM_read_bio_PrivateKey(keyBio, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (key == IntPtr.Zero)
-                throw new Exception($"Cannot initialize key: {OpenSsl.GetLastError()}");
-
-            if (OpenSsl.SSL_CTX_use_PrivateKey(_sslCtx, key) != 1)
-                throw new Exception($"Cannot set key to ctx: {OpenSsl.GetLastError()}");
-
-            if (OpenSsl.SSL_CTX_set_tlsext_use_srtp(_sslCtx, "SRTP_AES128_CM_SHA1_80") != 0)
-                throw new Exception($"Cannot add SRTP extension: {OpenSsl.GetLastError()}");
-
             Clients = new List<Client>();
+            IceUfrag = GenerateIceFragments(4);
+            IcePassword = GenerateIceFragments(22);
+            IcePasswordBytes = Encoding.UTF8.GetBytes(IcePassword);
+
             _namesPool = new List<string> { "Alice", "Bob", "Charlotte", "David", "Emily", "Fargo" };
             _fileCache = new Dictionary<string, FileCacheInfo>();
             _ssrcCounter = 0x10000001;
 
             _httpServer = new HttpServer(443, true);
             _httpServer.SslConfiguration = new ServerSslConfiguration(
-                new X509Certificate2(Resources.ReadFile("PttOnWebRtc.Resources.cert.pfx"), "dev-certificate"));
+                new X509Certificate2(Resources.ReadFile("PttOnWebRtc.Resources.cert.pfx"), "dev-certificate"))
+            {
+                EnabledSslProtocols = SslProtocols.Tls12,
+            };
             _httpServer.OnGet += HandleGetRequest;
             _httpServer.AddWebSocketService("/api", () => new Client(this));
 
@@ -108,6 +92,10 @@ namespace PttOnWebRtc
 
             PrepareStatic();
         }
+
+        #endregion Constructors
+
+        #region Methods
 
         public void Start()
         {
@@ -131,7 +119,7 @@ namespace PttOnWebRtc
             name = _namesPool[0];
             _namesPool.RemoveAt(0);
             clientId = _ssrcCounter++;
-            client.SetDtlsWrapper(new DtlsWrapper(_sslCtx, client, SendCallback));
+            client.SetDtlsWrapper(new DtlsWrapper(client, SendCallback));
 
             Clients.Add(client);
         }
@@ -248,7 +236,7 @@ namespace PttOnWebRtc
                         MessageType = StunPacket.MessageTypes.BindingSuccessResponse,
                         TransactionId = stun.TransactionId,
                         XorMappedAddress = from,
-                        MessageIntegrityKey = Encoding.UTF8.GetBytes("AzxUGoufPfAK/IhG6St7bZzU"),
+                        MessageIntegrityKey = IcePasswordBytes,
                         Fingerprint = true,
                     };
 
@@ -291,7 +279,7 @@ namespace PttOnWebRtc
             if (client == null)
                 return null;
 
-            if (!packet.VerifyIntegrity(Encoding.UTF8.GetBytes("AzxUGoufPfAK/IhG6St7bZzU")))
+            if (!packet.VerifyIntegrity(IcePasswordBytes))
                 return null;
 
             return client;
@@ -332,6 +320,22 @@ namespace PttOnWebRtc
             }
         }
 
+        private string GenerateIceFragments(int length)
+        {
+            const string ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            var r = new Random();
+
+            var s = new char[length];
+            for (var i = 0; i < length; ++i)
+                s[i] = ALPHABET[r.Next(ALPHABET.Length)];
+
+            return new string(s);
+        }
+
+        #endregion Methods
+
+        #region Classes
+
         private class FileCacheInfo
         {
             public byte[] Data { get; }
@@ -347,5 +351,7 @@ namespace PttOnWebRtc
                 ContentType = contentType;
             }
         }
+
+        #endregion Classes
     }
 }

@@ -8,14 +8,20 @@ namespace PttOnWebRtc
     using System;
     using System.Runtime.InteropServices;
 
-    public class SrtpContext
+    public sealed class SrtpContext : IDisposable
     {
+        #region Constants
+
         public const int SRTP_MASTER_KEY_LEN = 16;
         public const int SRTP_MASTER_SALT_LEN = 14;
         public const int SRTP_MASTER_LEN = SRTP_MASTER_KEY_LEN + SRTP_MASTER_SALT_LEN;
         public const int BLOCK_SIZE = 16;
         public const int AUTH_TAG_SIZE = 10;
         public const int HMAC_SHA1_SIZE = 20;
+
+        #endregion Constants
+
+        #region Fields
 
         private IntPtr _ctx;
 
@@ -27,6 +33,10 @@ namespace PttOnWebRtc
         private byte[] _rxKey;
         private byte[] _rxSalt;
 
+        #endregion Fields
+
+        #region Constructors
+
         public SrtpContext()
         {
             _ctx = OpenSsl.EVP_CIPHER_CTX_new();
@@ -34,7 +44,18 @@ namespace PttOnWebRtc
             _txSalt = new byte[SRTP_MASTER_SALT_LEN];
             _rxKey = new byte[SRTP_MASTER_KEY_LEN];
             _rxSalt = new byte[SRTP_MASTER_SALT_LEN];
-            // TODO implement Dispose
+        }
+
+        ~SrtpContext() => Dispose(false);
+
+        #endregion Constructors
+
+        #region Methods
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         public byte[] PackSrtpPacket(RtpPacket packet)
@@ -315,5 +336,13 @@ namespace PttOnWebRtc
                 if (hmacHandle.IsAllocated) hmacHandle.Free();
             }
         }
+
+        private void Dispose(bool disposing)
+        {
+            if (_ctx != IntPtr.Zero)
+                OpenSsl.EVP_CIPHER_CTX_free(_ctx);
+        }
+
+        #endregion Methods
     }
 }
