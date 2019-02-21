@@ -12,6 +12,15 @@ namespace PttOnWebRtc
     {
         #region Constants
 
+        public const int NID_commonName = 13;
+        public const int NID_X9_62_id_ecPublicKey = 408;
+        public const int NID_X9_62_prime256v1 = 415;
+        public const int SERIAL_RAND_BITS = 159;
+        public const int BN_RAND_TOP_ANY = -1;
+        public const int BN_RAND_BOTTOM_ANY = 0;
+        public const int MBSTRING_UTF8 = 0x1000;
+        public const int EVP_MAX_MD_SIZE = 64;
+
         private const string CryptoDllName = "libcrypto";
         private const string SslDllName = "libssl";
 
@@ -91,13 +100,67 @@ namespace PttOnWebRtc
         // Crypto
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr PEM_read_bio_X509(IntPtr bp, IntPtr x, IntPtr cb, IntPtr u);
+        public static extern IntPtr BN_new();
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr PEM_read_bio_PrivateKey(IntPtr bp, IntPtr x, IntPtr cb, IntPtr u);
+        public static extern int BN_pseudo_rand(IntPtr rnd, int bits, int top, int bottom);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr EVP_PKEY_new();
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void EVP_PKEY_free(IntPtr pkey);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr EC_KEY_new_by_curve_name(int nid);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int EC_KEY_generate_key(IntPtr key);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int EVP_PKEY_assign(IntPtr pkey, int type, IntPtr key);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_new();
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_set_pubkey(IntPtr x, IntPtr pkey);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_get_serialNumber(IntPtr x);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr BN_to_ASN1_INTEGER(IntPtr bn, IntPtr ai);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_set_version(IntPtr x, long version);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_NAME_new();
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_NAME_add_entry_by_NID(IntPtr name, int nid, int type, IntPtr bytes, int len, int loc, int set);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_set_subject_name(IntPtr x, IntPtr name);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_set_issuer_name(IntPtr x, IntPtr name);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_getm_notBefore(IntPtr x);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_getm_notAfter(IntPtr x);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr X509_gmtime_adj(IntPtr s, long adj);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_sign(IntPtr x, IntPtr pkey, IntPtr md);
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int X509_digest(IntPtr data, IntPtr type, IntPtr buffer, ref int len);
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr EVP_CIPHER_CTX_new();
@@ -110,6 +173,9 @@ namespace PttOnWebRtc
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr EVP_sha1();
+
+        [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr EVP_sha256();
 
         [DllImport(CryptoDllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int EVP_EncryptInit_ex(IntPtr ctx, IntPtr cipher, IntPtr engine, IntPtr key, IntPtr iv);

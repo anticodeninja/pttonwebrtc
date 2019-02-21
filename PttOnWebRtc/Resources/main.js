@@ -18,6 +18,7 @@
         clientId = 0,
         serverIceUfrag,
         serverIcePassword,
+        serverFingerprint,
         serverIp = '127.0.0.1',
         serverPort = 18500,
         rtpSender,
@@ -121,7 +122,7 @@
                 'a=ice-ufrag:' + serverIceUfrag,
                 'a=ice-pwd:' + serverIcePassword,
                 'a=ice-options:trickle',
-                'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
+                'a=fingerprint:' + serverFingerprint,
                 'a=setup:active',
                 'a=rtcp-mux',
                 'a=mid:0',
@@ -141,7 +142,7 @@
                     'a=ice-ufrag:' + serverIceUfrag,
                     'a=ice-pwd:' + serverIcePassword,
                     'a=ice-options:trickle',
-                    'a=fingerprint:sha-256 D2:A9:56:4A:CC:8E:ED:F8:30:F0:AA:82:E7:36:8B:BD:96:9E:1F:51:8A:48:C0:1C:B4:80:A7:50:75:37:7F:16',
+                    'a=fingerprint:' + serverFingerprint,
                     'a=setup:active',
                     'a=mid:' + mid,
                     'a=rtcp-mux',
@@ -211,6 +212,7 @@
                 clientId = data.client_id;
                 serverIceUfrag = data.server_ufrag;
                 serverIcePassword = data.server_password;
+                serverFingerprint = data.server_fingerprint;
                 serverIp = data.server_ip;
                 serverPort = data.server_port;
                 rtcInit();

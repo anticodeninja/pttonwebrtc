@@ -8,11 +8,14 @@ namespace PttOnWebRtc
     using System;
     using System.Collections.Concurrent;
     using System.Runtime.InteropServices;
+    using System.Text;
     using System.Threading;
 
     public sealed class DtlsWrapper : IDisposable
     {
         #region Constants
+
+        private const int DTLS_CERT_LIFETIME = 60 * 60 * 24 * 30;
 
         private const int DTLS_TIMEOUT = 3000;
 
@@ -48,6 +51,8 @@ namespace PttOnWebRtc
 
         #region Properties
 
+        public static string Fingerprint { get; }
+
         public IntPtr Ssl => _ssl;
 
         #endregion Properties
@@ -71,43 +76,84 @@ namespace PttOnWebRtc
             if (OpenSsl.BIO_meth_set_ctrl(_bioMeth, _bioCtrl) != 1)
                 throw new Exception($"Cannot initialize bioMethCtrl: {OpenSsl.GetLastError()}");
 
-            var certBio = OpenSsl.BIO_new(OpenSsl.BIO_s_mem());
-            if (certBio == IntPtr.Zero)
-                throw new Exception($"Cannot allocate cert BIO: {OpenSsl.GetLastError()}");
-
-            // TODO generate temporary certificates
-            var certData = Resources.ReadFile("PttOnWebRtc.Resources.p2.pem");
-            if (OpenSsl.BIO_write(certBio, certData, certData.Length) != certData.Length)
-                throw new Exception($"Cannot initialize cert BIO: {OpenSsl.GetLastError()}");
-
             _sslCtx = OpenSsl.SSL_CTX_new(OpenSsl.DTLS_method());
             if (_sslCtx == IntPtr.Zero)
                 throw new Exception($"Cannot create SSL_CTX: {OpenSsl.GetLastError()}");
 
-            var cert = OpenSsl.PEM_read_bio_X509(certBio, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (cert == IntPtr.Zero)
-                throw new Exception($"Cannot initialize cert: {OpenSsl.GetLastError()}");
-
-            if (OpenSsl.SSL_CTX_use_certificate(_sslCtx, cert) != 1)
-                throw new Exception($"Cannot set cert to ctx: {OpenSsl.GetLastError()}");
-
-            var keyBio = OpenSsl.BIO_new(OpenSsl.BIO_s_mem());
-            if (keyBio == IntPtr.Zero)
-                throw new Exception($"Cannot allocate key BIO: {OpenSsl.GetLastError()}");
-
-            var keyData = Resources.ReadFile("PttOnWebRtc.Resources.p2.key");
-            if (OpenSsl.BIO_write(keyBio, keyData, keyData.Length) != keyData.Length)
-                throw new Exception($"Cannot initialize key BIO: {OpenSsl.GetLastError()}");
-
-            var key = OpenSsl.PEM_read_bio_PrivateKey(keyBio, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            var key = OpenSsl.EVP_PKEY_new();
             if (key == IntPtr.Zero)
-                throw new Exception($"Cannot initialize key: {OpenSsl.GetLastError()}");
+                throw new Exception($"Cannot create key: {OpenSsl.GetLastError()}");
+
+            var ecKey = OpenSsl.EC_KEY_new_by_curve_name(OpenSsl.NID_X9_62_prime256v1);
+            if (ecKey == IntPtr.Zero)
+                throw new Exception($"Cannot create ecKey: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.EC_KEY_generate_key(ecKey) != 1)
+                throw new Exception($"Cannot generate ecKey: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.EVP_PKEY_assign(key, OpenSsl.NID_X9_62_id_ecPublicKey, ecKey) != 1)
+                throw new Exception($"Cannot assign ecKey to key: {OpenSsl.GetLastError()}");
 
             if (OpenSsl.SSL_CTX_use_PrivateKey(_sslCtx, key) != 1)
                 throw new Exception($"Cannot set key to ctx: {OpenSsl.GetLastError()}");
 
+            var x509 = OpenSsl.X509_new();
+            if (x509 == IntPtr.Zero)
+                throw new Exception($"Cannot create ecKey: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_set_pubkey(x509, key) != 1)
+                throw new Exception($"Cannot assign pubkey to x509: {OpenSsl.GetLastError()}");
+
+            var serialNumber = OpenSsl.BN_new();
+            if (serialNumber == IntPtr.Zero)
+                throw new Exception($"Cannot create BN for serialNumber: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.BN_pseudo_rand(serialNumber, OpenSsl.SERIAL_RAND_BITS,
+                    OpenSsl.BN_RAND_TOP_ANY, OpenSsl.BN_RAND_BOTTOM_ANY) != 1)
+                throw new Exception($"Cannot generate random for serialNumber: {OpenSsl.GetLastError()}");
+
+            var serialNumberAddr = OpenSsl.X509_get_serialNumber(x509);
+            if (serialNumberAddr == IntPtr.Zero)
+                throw new Exception($"Cannot take address for serialNumber: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.BN_to_ASN1_INTEGER(serialNumber, serialNumberAddr) == IntPtr.Zero)
+                throw new Exception($"Cannot assing serialNumber to x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_set_version(x509, 2L) != 1)
+                throw new Exception($"Cannot set version to x509: {OpenSsl.GetLastError()}");
+
+            var name = OpenSsl.X509_NAME_new();
+            if (name == IntPtr.Zero)
+                throw new Exception($"Cannot create name for x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_NAME_add_entry_by_NID(name, OpenSsl.NID_commonName, OpenSsl.MBSTRING_UTF8,
+                    Marshal.StringToHGlobalAnsi("WebRTC"), -1, 0, 0) != 1)
+                throw new Exception($"Cannot assign name for x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_set_subject_name(x509, name) != 1)
+                throw new Exception($"Cannot assign subject name to x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_set_issuer_name(x509, name) != 1)
+                throw new Exception($"Cannot assign issuer name to x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_gmtime_adj(OpenSsl.X509_getm_notBefore(x509), 0) == IntPtr.Zero)
+                throw new Exception($"Cannot assign issuer notBefore to x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_gmtime_adj(OpenSsl.X509_getm_notAfter(x509), DTLS_CERT_LIFETIME) == IntPtr.Zero)
+                throw new Exception($"Cannot assign issuer notAfter to x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.X509_sign(x509, key, OpenSsl.EVP_sha256()) == 0)
+                throw new Exception($"Cannot sign x509: {OpenSsl.GetLastError()}");
+
+            if (OpenSsl.SSL_CTX_use_certificate(_sslCtx, x509) != 1)
+                throw new Exception($"Cannot set cert to ctx: {OpenSsl.GetLastError()}");
+
+            Fingerprint = GetFingerprint(x509);
+
             if (OpenSsl.SSL_CTX_set_tlsext_use_srtp(_sslCtx, "SRTP_AES128_CM_SHA1_80") != 0)
                 throw new Exception($"Cannot add SRTP extension: {OpenSsl.GetLastError()}");
+
+            // TODO Free mem for unnecessary variables
         }
 
         public DtlsWrapper(Client client, Action<Client, byte[]> sendCallback)
@@ -210,6 +256,31 @@ namespace PttOnWebRtc
                     return 28; // IPv4 + UDP
             }
             return 0;
+        }
+
+        private static string GetFingerprint(IntPtr x509)
+        {
+            var bufferHandle = default(GCHandle);
+            int length = OpenSsl.EVP_MAX_MD_SIZE;
+            var buffer = new byte[length];
+
+            try
+            {
+                bufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                if (OpenSsl.X509_digest(x509, OpenSsl.EVP_sha256(), bufferHandle.AddrOfPinnedObject(), ref length) != 1)
+                    throw new Exception($"Cannot calculate digest: {OpenSsl.GetLastError()}");
+            }
+            finally
+            {
+                bufferHandle.Free();
+            }
+
+            var sb = new StringBuilder("sha-256 ");
+            for (var i = 0; i < length; ++i)
+                sb.AppendFormat("{0:X2}:", buffer[i]);
+            sb.Length -= 1;
+
+            return sb.ToString();
         }
 
         private void Dispose(bool disposing)

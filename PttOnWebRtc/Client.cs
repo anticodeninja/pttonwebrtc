@@ -96,6 +96,7 @@ namespace PttOnWebRtc
                         ["client_id"] = ClientId,
                         ["server_ufrag"] = Server.IceUfrag,
                         ["server_password"] = Server.IcePassword,
+                        ["server_fingerprint"] = DtlsWrapper.Fingerprint,
                         ["server_ip"] = Context.ServerEndPoint.Address.ToString(),
                         ["server_port"] = 18500, // TODO Unmagic
                     }.ToString()

@@ -47,6 +47,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DtlsWrapperTests.cs" />
     <Compile Include="SrtpContextTests.cs" />
     <Compile Include="StunCrc32Tests.cs" />
     <Compile Include="BufferPrimitiviesTests.cs" />
