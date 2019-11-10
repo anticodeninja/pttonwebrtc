@@ -50,7 +50,7 @@
     <Compile Include="DtlsWrapperTests.cs" />
     <Compile Include="SrtpContextTests.cs" />
     <Compile Include="StunCrc32Tests.cs" />
-    <Compile Include="BufferPrimitiviesTests.cs" />
+    <Compile Include="BufferPrimitivesTests.cs" />
     <Compile Include="StunPacketTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

@@ -53,18 +53,18 @@ namespace PttOnWebRtc
             temp.PayloadType = (byte)(buffer[offset] & 0x7f);
             offset += 1;
 
-            temp.SequenceNumber = BufferPrimitivies.GetUint16(buffer, ref offset);
-            temp.Timestamp = BufferPrimitivies.GetUint32(buffer, ref offset);
-            temp.Ssrc = BufferPrimitivies.GetUint32(buffer, ref offset);
+            temp.SequenceNumber = BufferPrimitives.GetUint16(buffer, ref offset);
+            temp.Timestamp = BufferPrimitives.GetUint32(buffer, ref offset);
+            temp.Ssrc = BufferPrimitives.GetUint32(buffer, ref offset);
 
             offset += contributingSourceCount * 4; // TODO implement CSRC
             if (extension)
             {
-                var extensionCount = BufferPrimitivies.GetUint32(buffer, ref offset);
+                var extensionCount = BufferPrimitives.GetUint32(buffer, ref offset);
                 offset += (int)extensionCount * 4; // TODO implement Extension
             }
 
-            temp.Payload = BufferPrimitivies.GetBytes(buffer, ref offset, buffer.Length - offset);
+            temp.Payload = BufferPrimitives.GetBytes(buffer, ref offset, buffer.Length - offset);
 
             output = temp;
             return ResultCodes.Ok;
@@ -75,7 +75,7 @@ namespace PttOnWebRtc
             int offset = 0;
             var buffer = new byte[BUFFER_SIZE];
             Pack(buffer, ref offset);
-            return BufferPrimitivies.GetBytes(buffer, 0, offset);
+            return BufferPrimitives.GetBytes(buffer, 0, offset);
         }
 
         public void Pack(byte[] buffer, ref int offset)
@@ -90,13 +90,13 @@ namespace PttOnWebRtc
             buffer[offset] |= PayloadType;
             offset += 1;
 
-            BufferPrimitivies.SetUint16(buffer, ref offset, SequenceNumber);
-            BufferPrimitivies.SetUint32(buffer, ref offset, Timestamp);
-            BufferPrimitivies.SetUint32(buffer, ref offset, Ssrc);
+            BufferPrimitives.SetUint16(buffer, ref offset, SequenceNumber);
+            BufferPrimitives.SetUint32(buffer, ref offset, Timestamp);
+            BufferPrimitives.SetUint32(buffer, ref offset, Ssrc);
 
             // TODO impement CSRC and Extension
 
-            BufferPrimitivies.SetBytes(buffer, ref offset, Payload);
+            BufferPrimitives.SetBytes(buffer, ref offset, Payload);
         }
     }
 }

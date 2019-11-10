@@ -44,7 +44,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BufferPrimitivies.cs" />
+    <Compile Include="BufferPrimitives.cs" />
     <Compile Include="DtlsPacket.cs" />
     <Compile Include="DtlsWrapper.cs" />
     <Compile Include="OpenSsl.cs" />

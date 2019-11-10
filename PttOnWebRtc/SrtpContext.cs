@@ -75,9 +75,9 @@ namespace PttOnWebRtc
             var sessionIv = new byte[BLOCK_SIZE];
             var temp = new byte[BLOCK_SIZE];
             for (var i = 0; i < 14; ++i) sessionIv[i] = sessionSalt[i];
-            BufferPrimitivies.SetUint32(temp, 4, packet.Ssrc);
+            BufferPrimitives.SetUint32(temp, 4, packet.Ssrc);
             for (var i = 4; i < 8; ++i) sessionIv[i] ^= temp[i];
-            BufferPrimitivies.SetVarious(temp, 8, index, 6);
+            BufferPrimitives.SetVarious(temp, 8, index, 6);
             for (var i = 8; i < 14; ++i) sessionIv[i] ^= temp[i];
 
             var keyStream = new byte[packet.Payload.Length];
@@ -86,11 +86,11 @@ namespace PttOnWebRtc
             for (var i = 0; i < packet.Payload.Length; ++i) buffer[payloadOffset + i] = (byte)(packet.Payload[i] ^ keyStream[i]);
 
             var hmac = new byte[HMAC_SHA1_SIZE];
-            BufferPrimitivies.SetVarious(buffer, offset, _txRoc, 4);
+            BufferPrimitives.SetVarious(buffer, offset, _txRoc, 4);
             CalcHmac(sessionAuth, 20, buffer, offset + 4, hmac);
-            BufferPrimitivies.SetBytes(buffer, ref offset, hmac, 0, 10);
+            BufferPrimitives.SetBytes(buffer, ref offset, hmac, 0, 10);
 
-            return BufferPrimitivies.GetBytes(buffer, 0, offset);
+            return BufferPrimitives.GetBytes(buffer, 0, offset);
         }
 
         public RtpPacket.ResultCodes TryParseSrtpPacket(byte[] data, out RtpPacket packet)
@@ -113,7 +113,7 @@ namespace PttOnWebRtc
             var hmacData = new byte[packetSize + 4];
             var hmac = new byte[HMAC_SHA1_SIZE];
             Array.Copy(data, 0, hmacData, 0, packetSize);
-            BufferPrimitivies.SetVarious(hmacData, packetSize, _rxRoc, 4);
+            BufferPrimitives.SetVarious(hmacData, packetSize, _rxRoc, 4);
             CalcHmac(sessionAuth, 20, hmacData, packetSize + 4, hmac);
 
             for (var i = 0; i < AUTH_TAG_SIZE; ++i)
@@ -123,9 +123,9 @@ namespace PttOnWebRtc
             var sessionIv = new byte[BLOCK_SIZE];
             var temp = new byte[BLOCK_SIZE];
             for (var i = 0; i < 14; ++i) sessionIv[i] = sessionSalt[i];
-            BufferPrimitivies.SetUint32(temp, 4, packet.Ssrc);
+            BufferPrimitives.SetUint32(temp, 4, packet.Ssrc);
             for (var i = 4; i < 8; ++i) sessionIv[i] ^= temp[i];
-            BufferPrimitivies.SetVarious(temp, 8, index, 6);
+            BufferPrimitives.SetVarious(temp, 8, index, 6);
             for (var i = 8; i < 14; ++i) sessionIv[i] ^= temp[i];
 
             var keyStream = new byte[payloadLength];
@@ -183,10 +183,10 @@ namespace PttOnWebRtc
         public void DumpMasterKeys()
         {
             Console.Out.WriteLineAsync("============== TXKEY TXSALT RXKEY RXSALT ==============");
-            Console.Out.WriteLineAsync(BufferPrimitivies.ToHexStream(_txKey));
-            Console.Out.WriteLineAsync(BufferPrimitivies.ToHexStream(_txSalt));
-            Console.Out.WriteLineAsync(BufferPrimitivies.ToHexStream(_rxKey));
-            Console.Out.WriteLineAsync(BufferPrimitivies.ToHexStream(_rxSalt));
+            Console.Out.WriteLineAsync(BufferPrimitives.ToHexStream(_txKey));
+            Console.Out.WriteLineAsync(BufferPrimitives.ToHexStream(_txSalt));
+            Console.Out.WriteLineAsync(BufferPrimitives.ToHexStream(_rxKey));
+            Console.Out.WriteLineAsync(BufferPrimitives.ToHexStream(_rxSalt));
             Console.Out.WriteLineAsync("=======================================================");
         }
 

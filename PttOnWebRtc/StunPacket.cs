@@ -3,7 +3,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 // Copyright 2019 Artem Yamshanov, me [at] anticode.ninja
 
-﻿namespace PttOnWebRtc
+namespace PttOnWebRtc
 {
     using System;
     using System.Net.Sockets;
@@ -146,30 +146,30 @@
             if ((buffer[offset] & 0xC0) != 0)
                 return ResultCodes.PacketIsNotStun;
 
-            endOffset = endOffset + BufferPrimitivies.GetUint16(buffer, offset + 2);
+            endOffset = endOffset + BufferPrimitives.GetUint16(buffer, offset + 2);
             if (endOffset > buffer.Length)
                 return ResultCodes.PacketIsNotStun;
 
-            if (BufferPrimitivies.GetUint32(buffer, offset + 4) != MAGIC_COOKIE)
+            if (BufferPrimitives.GetUint32(buffer, offset + 4) != MAGIC_COOKIE)
                 return ResultCodes.PacketIsNotStun;
 
             var temp = new StunPacket();
 
             var startOffset = offset;
 
-            temp.MessageType = (MessageTypes) BufferPrimitivies.GetUint16(buffer, ref offset);
+            temp.MessageType = (MessageTypes) BufferPrimitives.GetUint16(buffer, ref offset);
 
             offset += 6; // Message length and magic cookie
 
-            temp.TransactionId = BufferPrimitivies.GetBytes(buffer, ref offset, 12);
+            temp.TransactionId = BufferPrimitives.GetBytes(buffer, ref offset, 12);
 
             while (offset < endOffset)
             {
                 if (endOffset - offset < 4)
                     return ResultCodes.IncorrectAttribute;
 
-                var type = BufferPrimitivies.GetUint16(buffer, ref offset);
-                var length = BufferPrimitivies.GetUint16(buffer, ref offset);
+                var type = BufferPrimitives.GetUint16(buffer, ref offset);
+                var length = BufferPrimitives.GetUint16(buffer, ref offset);
                 var tagEndOffset = offset + (length + 3) / 4 * 4;
 
                 if (tagEndOffset > endOffset)
@@ -206,9 +206,9 @@
 
                     case Tags.MessageIntegrity:
                         if (length != 20) return ResultCodes.IncorrectAttribute;
-                        temp.MessageIntegrity = BufferPrimitivies.GetBytes(buffer, ref offset, 20);
-                        temp.MessageIntegrityInput = BufferPrimitivies.GetBytes(buffer, startOffset, offset - startOffset - HMAC_TAG_SIZE);
-                        BufferPrimitivies.SetUint16(temp.MessageIntegrityInput, 2, (ushort) (offset - startOffset - HEADER_SIZE));
+                        temp.MessageIntegrity = BufferPrimitives.GetBytes(buffer, ref offset, 20);
+                        temp.MessageIntegrityInput = BufferPrimitives.GetBytes(buffer, startOffset, offset - startOffset - HMAC_TAG_SIZE);
+                        BufferPrimitives.SetUint16(temp.MessageIntegrityInput, 2, (ushort) (offset - startOffset - HEADER_SIZE));
                         break;
 
                     case Tags.ErrorCode:
@@ -237,7 +237,7 @@
                     case Tags.Priority:
                         if (temp.Priority != null) break;
                         if (length != 4) return ResultCodes.IncorrectAttribute;
-                        temp.Priority = BufferPrimitivies.GetUint32(buffer, ref offset);
+                        temp.Priority = BufferPrimitives.GetUint32(buffer, ref offset);
                         break;
 
                     case Tags.UseCandidate:
@@ -246,7 +246,7 @@
 
                     case Tags.Fingerprint:
                         if (length != 4) return ResultCodes.IncorrectAttribute;
-                        var actualFingerprint = BufferPrimitivies.GetUint32(buffer, ref offset);
+                        var actualFingerprint = BufferPrimitives.GetUint32(buffer, ref offset);
                         var calcFingerprint = StunCrc32.Calc(buffer, startOffset, endOffset - startOffset - 8) ^ FINGERPRINT_MASK;
                         if (calcFingerprint != actualFingerprint) return ResultCodes.PacketIsNotStun;
                         temp.Fingerprint = true;
@@ -255,13 +255,13 @@
                     case Tags.IceControlled:
                         if (temp.IceControlledTieBreaker != null) break;
                         if (length != 8) return ResultCodes.IncorrectAttribute;;
-                        temp.IceControlledTieBreaker = BufferPrimitivies.GetUint64(buffer, ref offset);
+                        temp.IceControlledTieBreaker = BufferPrimitives.GetUint64(buffer, ref offset);
                         break;
 
                     case Tags.IceControlling:
                         if (temp.IceControllingTieBreaker != null) break;
                         if (length != 8) return ResultCodes.IncorrectAttribute;;
-                        temp.IceControllingTieBreaker = BufferPrimitivies.GetUint64(buffer, ref offset);
+                        temp.IceControllingTieBreaker = BufferPrimitives.GetUint64(buffer, ref offset);
                         break;
 
                     case Tags.ResponseOrigin:
@@ -305,10 +305,10 @@
             if (length < 4) return null;
 
             offset += 1;
-            var type = BufferPrimitivies.GetUint8(buffer, ref offset);
+            var type = BufferPrimitives.GetUint8(buffer, ref offset);
 
             var portMask = transactionId != null ? (MAGIC_COOKIE >> 16) : 0;
-            var port = (ushort)(BufferPrimitivies.GetUint16(buffer, ref offset) ^ portMask);
+            var port = (ushort)(BufferPrimitives.GetUint16(buffer, ref offset) ^ portMask);
 
             byte[] address = null;
             byte[] mask = null;
@@ -317,21 +317,21 @@
             {
                 case 0x01:
                     if (length != 8) break;
-                    address = BufferPrimitivies.GetBytes(buffer, offset, 4);
+                    address = BufferPrimitives.GetBytes(buffer, offset, 4);
                     if (transactionId != null)
                     {
                         mask = new byte[4];
-                        BufferPrimitivies.SetUint32(mask, 0, MAGIC_COOKIE);
+                        BufferPrimitives.SetUint32(mask, 0, MAGIC_COOKIE);
                     }
                     break;
                 case 0x02:
                     if (length != 20) break;
-                    address = BufferPrimitivies.GetBytes(buffer, offset, 16);
+                    address = BufferPrimitives.GetBytes(buffer, offset, 16);
                     if (transactionId != null)
                     {
                         mask = new byte[16];
-                        BufferPrimitivies.SetUint32(mask, 0, MAGIC_COOKIE);
-                        BufferPrimitivies.SetBytes(mask, 4, transactionId);
+                        BufferPrimitives.SetUint32(mask, 0, MAGIC_COOKIE);
+                        BufferPrimitives.SetBytes(mask, 4, transactionId);
                     }
                     break;
             }
@@ -361,7 +361,7 @@
                 if (transactionId != null)
                 {
                     mask = new byte[4];
-                    BufferPrimitivies.SetUint32(mask, 0, MAGIC_COOKIE);
+                    BufferPrimitives.SetUint32(mask, 0, MAGIC_COOKIE);
                 }
             }
             else if (data.AddressFamily == AddressFamily.InterNetworkV6)
@@ -371,8 +371,8 @@
                 if (transactionId != null)
                 {
                     mask = new byte[16];
-                    BufferPrimitivies.SetUint32(mask, 0, MAGIC_COOKIE);
-                    BufferPrimitivies.SetBytes(mask, 4, transactionId);
+                    BufferPrimitives.SetUint32(mask, 0, MAGIC_COOKIE);
+                    BufferPrimitives.SetBytes(mask, 4, transactionId);
                 }
             }
 
@@ -384,10 +384,10 @@
                     address[i] ^= mask[i];
             }
 
-            BufferPrimitivies.SetUint8(buffer, ref offset, 0);
-            BufferPrimitivies.SetUint8(buffer, ref offset, type);
-            BufferPrimitivies.SetUint16(buffer, ref offset, (ushort) (data.Port ^ portMask));
-            BufferPrimitivies.SetBytes(buffer, ref offset, address);
+            BufferPrimitives.SetUint8(buffer, ref offset, 0);
+            BufferPrimitives.SetUint8(buffer, ref offset, type);
+            BufferPrimitives.SetUint16(buffer, ref offset, (ushort) (data.Port ^ portMask));
+            BufferPrimitives.SetBytes(buffer, ref offset, address);
         }
 
         public byte[] Pack()
@@ -402,27 +402,27 @@
         private int StartTag(byte[] buffer, ref int offset, Tags tag)
         {
             var startTagOffset = offset;
-            BufferPrimitivies.SetUint16(buffer, ref offset, (ushort) tag);
+            BufferPrimitives.SetUint16(buffer, ref offset, (ushort) tag);
             offset += 2;
             return startTagOffset;
         }
 
         private void StopTag(byte[] buffer, ref int offset, int startTagOffset)
         {
-            BufferPrimitivies.SetUint16(buffer, startTagOffset + 2, (ushort) (offset - startTagOffset - 4));
+            BufferPrimitives.SetUint16(buffer, startTagOffset + 2, (ushort) (offset - startTagOffset - 4));
             offset = startTagOffset + (offset - startTagOffset + 3) / 4 * 4;
         }
 
         private void Pack(byte[] buffer, ref int offset)
         {
             var startOffset = offset;
-            BufferPrimitivies.SetUint16(buffer, ref offset, (ushort) MessageType);
+            BufferPrimitives.SetUint16(buffer, ref offset, (ushort) MessageType);
 
             var lengthOffset = offset;
             offset += 2; // Reserve place for length
 
-            BufferPrimitivies.SetUint32(buffer, ref offset, MAGIC_COOKIE);
-            BufferPrimitivies.SetBytes(buffer, ref offset, TransactionId);
+            BufferPrimitives.SetUint32(buffer, ref offset, MAGIC_COOKIE);
+            BufferPrimitives.SetBytes(buffer, ref offset, TransactionId);
 
             if (MappedAddress != null)
             {
@@ -434,7 +434,7 @@
             if (Username != null)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.Username);
-                BufferPrimitivies.SetBytes(buffer, ref offset, Encoding.UTF8.GetBytes(Username));
+                BufferPrimitives.SetBytes(buffer, ref offset, Encoding.UTF8.GetBytes(Username));
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
@@ -448,21 +448,21 @@
             if (Priority != null)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.Priority);
-                BufferPrimitivies.SetUint32(buffer, ref offset, Priority.Value);
+                BufferPrimitives.SetUint32(buffer, ref offset, Priority.Value);
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
             if (IceControlledTieBreaker != null)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.IceControlled);
-                BufferPrimitivies.SetUint64(buffer, ref offset, IceControlledTieBreaker.Value);
+                BufferPrimitives.SetUint64(buffer, ref offset, IceControlledTieBreaker.Value);
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
             if (IceControllingTieBreaker != null)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.IceControlling);
-                BufferPrimitivies.SetUint64(buffer, ref offset, IceControllingTieBreaker.Value);
+                BufferPrimitives.SetUint64(buffer, ref offset, IceControllingTieBreaker.Value);
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
@@ -475,31 +475,31 @@
 
             if (MessageIntegrityKey != null)
             {
-                MessageIntegrityInput = BufferPrimitivies.GetBytes(buffer, startOffset, offset - startOffset);
-                BufferPrimitivies.SetUint16(MessageIntegrityInput, 2, (ushort) (offset - startOffset + HMAC_TAG_SIZE - HEADER_SIZE));
+                MessageIntegrityInput = BufferPrimitives.GetBytes(buffer, startOffset, offset - startOffset);
+                BufferPrimitives.SetUint16(MessageIntegrityInput, 2, (ushort) (offset - startOffset + HMAC_TAG_SIZE - HEADER_SIZE));
                 MessageIntegrity = CalcHmac(MessageIntegrityKey);
             }
 
             if (MessageIntegrity != null)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.MessageIntegrity);
-                BufferPrimitivies.SetBytes(buffer, ref offset, MessageIntegrity);
+                BufferPrimitives.SetBytes(buffer, ref offset, MessageIntegrity);
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
             if (Fingerprint)
             {
                 var startTagOffset = StartTag(buffer, ref offset, Tags.Fingerprint);
-                BufferPrimitivies.SetUint32(buffer, ref offset, 0);
+                BufferPrimitives.SetUint32(buffer, ref offset, 0);
                 StopTag(buffer, ref offset, startTagOffset);
             }
 
-            BufferPrimitivies.SetUint16(buffer, lengthOffset, (ushort) (offset - startOffset - HEADER_SIZE));
+            BufferPrimitives.SetUint16(buffer, lengthOffset, (ushort) (offset - startOffset - HEADER_SIZE));
 
             if (Fingerprint)
             {
                 var calcFingerprint = StunCrc32.Calc(buffer, startOffset, offset - startOffset - 8) ^ FINGERPRINT_MASK;
-                BufferPrimitivies.SetUint32(buffer, offset - 4, calcFingerprint);
+                BufferPrimitives.SetUint32(buffer, offset - 4, calcFingerprint);
             }
         }
 

@@ -8,7 +8,7 @@
     using System.Collections.Generic;
     using System.Text;
 
-    public class BufferPrimitivies
+    public class BufferPrimitives
     {
         public static byte GetUint8(byte[] buffer, ref int offset) => (byte) GetVarious(buffer, ref offset, 1);
         public static byte GetUint8(byte[] buffer, int offset) => (byte) GetVarious(buffer, ref offset, 1);
@@ -23,6 +23,8 @@
         public static ulong GetUint64(byte[] buffer, int offset) => GetVarious(buffer, ref offset, 8);
 
         public static ulong GetVarious(byte[] buffer, int offset, int count) => GetVarious(buffer, ref offset, count);
+        public static ulong GetBits(byte[] buffer, int offset, int bitOffset, int bitCount)
+            => GetBits(buffer, offset, ref bitOffset, bitCount);
 
         public static byte[] GetBytes(byte[] buffer, int offset, int count) => GetBytes(buffer, ref offset, count);
 
@@ -30,6 +32,28 @@
         {
             ulong result = 0;
             for (var i = 0; i < count; ++i) result = (result << 8) | buffer[offset++];
+            return result;
+        }
+
+        public static ulong GetBits(byte[] buffer, int offset, ref int bitOffset, int bitCount)
+        {
+            ulong result = 0;
+
+            while (bitCount > 0)
+            {
+                var inByteOffset = bitOffset & 0x7;
+                var inByteCount = 8 - inByteOffset;
+                // MAGIC: set inByteCount = bitCount if inByteCount > bitCount
+                inByteCount -= ((bitCount - inByteCount) >> 31) & (inByteCount - bitCount);
+                var byteOffset = offset + (bitOffset >> 3);
+                var mask = (1 << inByteCount) - 1;
+
+                result = result << inByteCount | (ulong)(buffer[byteOffset] >> (8 - inByteOffset - inByteCount) & mask);
+
+                bitOffset += inByteCount;
+                bitCount -= inByteCount;
+            }
+
             return result;
         }
 
@@ -53,6 +77,8 @@
         public static void SetUint64(byte[] buffer, int offset, ulong data) => SetVarious(buffer, ref offset, data, 8);
 
         public static void SetVarious(byte[] buffer, int offset, ulong data, int count) => SetVarious(buffer, ref offset, data, count);
+        public static void SetBits(byte[] buffer, int offset, int bitOffset, int bitCount, ulong data)
+            => SetBits(buffer, offset, ref bitOffset, bitCount, data);
 
         public static void SetBytes(byte[] buffer, ref int offset, byte[] data) => SetBytes(buffer, ref offset, data, 0, data.Length);
         public static void SetBytes(byte[] buffer, int offset, byte[] data) => SetBytes(buffer, ref offset, data, 0, data.Length);
@@ -61,6 +87,28 @@
         public static void SetVarious(byte[] buffer, ref int offset, ulong data, int count)
         {
             for (var i = 0; i < count; ++i) buffer[offset++] = (byte) (data >> (8 * (count - i - 1)));
+        }
+
+        public static void SetBits(byte[] buffer, int offset, ref int bitOffset, int bitCount, ulong data)
+        {
+            while (bitCount > 0)
+            {
+                var inByteOffset = bitOffset & 0x7;
+                var inByteCount = 8 - inByteOffset;
+                // MAGIC: set rShift if bitCount > inByteCount
+                var rShift = ((inByteCount - bitCount) >> 31) & (bitCount - inByteCount);
+                // MAGIC: set lShift if inByteCount > bitCount
+                var lShift = ((bitCount - inByteCount) >> 31) & (inByteCount - bitCount);
+                // MAGIC: set inByteCount = bitCount if inByteCount > bitCount
+                inByteCount -= ((bitCount - inByteCount) >> 31) & (inByteCount - bitCount);
+                var byteOffset = offset + (bitOffset >> 3);
+                var mask = (byte)~(((1 << inByteCount) - 1) << lShift);
+
+                buffer[byteOffset] = (byte) (buffer[byteOffset] & mask | ((byte)(data >> rShift) << lShift));
+
+                bitOffset += inByteCount;
+                bitCount -= inByteCount;
+            }
         }
 
         public static void SetBytes(byte[] buffer, ref int offset, byte[] data, int index, int count)
