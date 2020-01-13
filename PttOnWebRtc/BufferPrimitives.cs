@@ -102,9 +102,9 @@
                 // MAGIC: set inByteCount = bitCount if inByteCount > bitCount
                 inByteCount -= ((bitCount - inByteCount) >> 31) & (inByteCount - bitCount);
                 var byteOffset = offset + (bitOffset >> 3);
-                var mask = (byte)~(((1 << inByteCount) - 1) << lShift);
+                var mask = (byte)(((1 << inByteCount) - 1) << lShift);
 
-                buffer[byteOffset] = (byte) (buffer[byteOffset] & mask | ((byte)(data >> rShift) << lShift));
+                buffer[byteOffset] = (byte) (buffer[byteOffset] & ~mask | ((byte)(data >> rShift) << lShift) & mask);
 
                 bitOffset += inByteCount;
                 bitCount -= inByteCount;
@@ -149,6 +149,11 @@
             for (var i = 0; i < input.Length; ++i)
                 sb.AppendFormat("{0:X2}", input[i]);
             return sb.ToString();
+        }
+
+        public static long Sint(ulong value, int bitCount)
+        {
+            return (long)(value - (((1u << (bitCount - 1)) - 1 - value) & (1u << bitCount)));
         }
     }
 }

@@ -134,5 +134,20 @@ namespace Tests
             BufferPrimitives.SetBits(temp, 0, 4, 32, 0x89ABCDEF);
             Assert.AreEqual(new byte[] { 0x08, 0x9A, 0xBC, 0xDE, 0xF9 }, temp);
         }
+
+        [Test]
+        public void SignedBitsTest()
+        {
+            var temp = MAGIC.Take(5).ToArray();
+            BufferPrimitives.SetBits(temp, 1, 2, 4, unchecked((ulong)-1));
+            Assert.AreEqual(new byte[] { 0x01, 0x3F, 0x45, 0x67, 0x89 }, temp);
+            BufferPrimitives.SetBits(temp, 2, 1, 6, unchecked((ulong)-22));
+            Assert.AreEqual(new byte[] { 0x01, 0x3F, 0x55, 0x67, 0x89 }, temp);
+
+            Assert.AreEqual(1, BufferPrimitives.Sint(BufferPrimitives.GetBits(temp, 0, 0, 8), 8));
+            Assert.AreEqual(1, BufferPrimitives.Sint(BufferPrimitives.GetBits(temp, 0, 6, 2), 2));
+            Assert.AreEqual(-1, BufferPrimitives.Sint(BufferPrimitives.GetBits(temp, 1, 2, 4), 4));
+            Assert.AreEqual(-22, BufferPrimitives.Sint(BufferPrimitives.GetBits(temp, 2, 1, 6), 6));
+        }
     }
 }
